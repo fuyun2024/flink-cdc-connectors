@@ -18,6 +18,8 @@
 
 package com.ververica.cdc.connectors.mysql.source.reader;
 
+import com.ververica.cdc.connectors.mysql.source.events.*;
+import io.debezium.connector.mysql.MySqlConnectorConfig;
 import org.apache.flink.api.connector.source.SourceEvent;
 import org.apache.flink.api.connector.source.SourceReaderContext;
 import org.apache.flink.configuration.Configuration;
@@ -30,11 +32,6 @@ import org.apache.flink.util.FlinkRuntimeException;
 
 import com.ververica.cdc.connectors.mysql.debezium.DebeziumUtils;
 import com.ververica.cdc.connectors.mysql.source.config.MySqlSourceConfig;
-import com.ververica.cdc.connectors.mysql.source.events.BinlogSplitMetaEvent;
-import com.ververica.cdc.connectors.mysql.source.events.BinlogSplitMetaRequestEvent;
-import com.ververica.cdc.connectors.mysql.source.events.FinishedSnapshotSplitsAckEvent;
-import com.ververica.cdc.connectors.mysql.source.events.FinishedSnapshotSplitsReportEvent;
-import com.ververica.cdc.connectors.mysql.source.events.FinishedSnapshotSplitsRequestEvent;
 import com.ververica.cdc.connectors.mysql.source.offset.BinlogOffset;
 import com.ververica.cdc.connectors.mysql.source.split.FinishedSnapshotSplitInfo;
 import com.ververica.cdc.connectors.mysql.source.split.MySqlBinlogSplit;
@@ -52,11 +49,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -74,6 +67,9 @@ public class MySqlSourceReader<T>
     private final Map<String, MySqlSnapshotSplit> finishedUnackedSplits;
     private final Map<String, MySqlBinlogSplit> uncompletedBinlogSplits;
     private final int subtaskId;
+
+    private boolean isBinlogTask = false;
+    private MySqlBinlogSplit currentBinlogSplit;
 
     public MySqlSourceReader(
             FutureCompletingBlockingQueue<RecordsWithSplitIds<SourceRecord>> elementQueue,
@@ -106,6 +102,9 @@ public class MySqlSourceReader<T>
         if (split.isSnapshotSplit()) {
             return new MySqlSnapshotSplitState(split.asSnapshotSplit());
         } else {
+            isBinlogTask = true;
+            reportBinlogSubTaskId();
+            currentBinlogSplit = split.asBinlogSplit();
             return new MySqlBinlogSplitState(split.asBinlogSplit());
         }
     }
@@ -136,6 +135,7 @@ public class MySqlSourceReader<T>
             finishedUnackedSplits.put(mySqlSplit.splitId(), mySqlSplit.asSnapshotSplit());
         }
         reportFinishedSnapshotSplitsIfNeed();
+        reportAddedTableIfNeed();
         context.sendSplitRequest();
     }
 
@@ -161,6 +161,8 @@ public class MySqlSourceReader<T>
                     MySqlBinlogSplit mySqlBinlogSplit =
                             discoverTableSchemasForBinlogSplit(split.asBinlogSplit());
                     unfinishedSplits.add(mySqlBinlogSplit);
+                    isBinlogTask = true;
+                    currentBinlogSplit = mySqlBinlogSplit;
                 }
             }
         }
@@ -172,7 +174,17 @@ public class MySqlSourceReader<T>
 
     private MySqlBinlogSplit discoverTableSchemasForBinlogSplit(MySqlBinlogSplit split) {
         final String splitId = split.splitId();
-        if (split.getTableSchemas().isEmpty()) {
+        if (split.getTableSchemas().isEmpty() || split.isBinlogSplit()) {
+            // 需要获取全部的 binlog
+
+            sourceConfig.getDbzProperties().setProperty("database.include.list", ".*");
+            sourceConfig.getDbzProperties().setProperty("table.include.list", ".*");
+
+            sourceConfig.setDbzConfiguration(
+                    io.debezium.config.Configuration.from(sourceConfig.getDbzProperties()));
+            sourceConfig.setDbzMySqlConfig(
+                    new MySqlConnectorConfig(sourceConfig.getDbzConfiguration()));
+
             try (MySqlConnection jdbc =
                     DebeziumUtils.createMySqlConnection(sourceConfig.getDbzConfiguration())) {
                 Map<TableId, TableChanges.TableChange> tableSchemas =
@@ -214,6 +226,15 @@ public class MySqlSourceReader<T>
                     subtaskId,
                     ((BinlogSplitMetaEvent) sourceEvent).getMetaGroupId());
             fillMetaDataForBinlogSplit((BinlogSplitMetaEvent) sourceEvent);
+        } else if (sourceEvent instanceof BinlogSubTaskIdRequestEvent) {
+            reportBinlogSubTaskId();
+        } else if (sourceEvent instanceof AddedTableRequestEvent) {
+            binlogAddedTable((AddedTableRequestEvent) sourceEvent);
+        } else if (sourceEvent instanceof AddedTableAckEvent) {
+            currentBinlogSplit
+                    .getAddedTableContext()
+                    .ackUnReportTable(((AddedTableAckEvent) sourceEvent).getUnReportTable());
+            reportAddedTableIfNeed();
         } else {
             super.handleSourceEvents(sourceEvent);
         }
@@ -287,5 +308,31 @@ public class MySqlSourceReader<T>
     @Override
     protected MySqlSplit toSplitType(String splitId, MySqlSplitState splitState) {
         return splitState.toMySqlSplit();
+    }
+
+    private void binlogAddedTable(AddedTableRequestEvent event) {
+        // 放开新表的 binlog 数据 ,并对这张表的数据进行状态存储
+        Set<String> tableIds = event.getTableIds();
+
+        if (currentBinlogSplit != null) {
+            currentBinlogSplit.getAddedTableContext().addTableIfNotExist(tableIds);
+            reportAddedTableIfNeed();
+        }
+    }
+
+    private void reportAddedTableIfNeed() {
+        if (currentBinlogSplit.getAddedTableContext().hasUnReportTables()) {
+            Map<String, String> unReportTables =
+                    currentBinlogSplit.getAddedTableContext().getUnReportTables();
+            AddedTableReportEvent tableReportEvent = new AddedTableReportEvent(unReportTables);
+            context.sendSourceEventToCoordinator(tableReportEvent);
+        }
+    }
+
+    private void reportBinlogSubTaskId() {
+        if (isBinlogTask) {
+            BinlogSubTaskIdEvent binlogSubTaskIdEvent = new BinlogSubTaskIdEvent(subtaskId);
+            context.sendSourceEventToCoordinator(binlogSubTaskIdEvent);
+        }
     }
 }

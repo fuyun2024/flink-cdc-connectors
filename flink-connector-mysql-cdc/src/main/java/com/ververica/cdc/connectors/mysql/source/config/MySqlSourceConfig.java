@@ -59,9 +59,9 @@ public class MySqlSourceConfig implements Serializable {
     // --------------------------------------------------------------------------------------------
     // Debezium Configurations
     // --------------------------------------------------------------------------------------------
-    private final Properties dbzProperties;
-    private final Configuration dbzConfiguration;
-    private final MySqlConnectorConfig dbzMySqlConfig;
+    private Properties dbzProperties;
+    private Configuration dbzConfiguration;
+    private MySqlConnectorConfig dbzMySqlConfig;
 
     MySqlSourceConfig(
             String hostname,
@@ -193,5 +193,17 @@ public class MySqlSourceConfig implements Serializable {
 
     public RelationalTableFilters getTableFilters() {
         return dbzMySqlConfig.getTableFilters();
+    }
+
+    public void setDbzProperties(Properties dbzProperties) {
+        this.dbzProperties = dbzProperties;
+    }
+
+    public void setDbzConfiguration(Configuration dbzConfiguration) {
+        this.dbzConfiguration = dbzConfiguration;
+    }
+
+    public void setDbzMySqlConfig(MySqlConnectorConfig dbzMySqlConfig) {
+        this.dbzMySqlConfig = dbzMySqlConfig;
     }
 }

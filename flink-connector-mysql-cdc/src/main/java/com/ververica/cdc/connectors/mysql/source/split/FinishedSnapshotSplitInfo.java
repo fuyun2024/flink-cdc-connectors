@@ -59,6 +59,14 @@ public class FinishedSnapshotSplitInfo {
         this.highWatermark = highWatermark;
     }
 
+    public FinishedSnapshotSplitInfo(TableId tableId, BinlogOffset highWatermark) {
+        this.tableId = tableId;
+        this.splitId = "none";
+        this.splitStart = Arrays.asList("none").toArray();
+        this.splitEnd = Arrays.asList("none").toArray();
+        this.highWatermark = highWatermark;
+    }
+
     public TableId getTableId() {
         return tableId;
     }
