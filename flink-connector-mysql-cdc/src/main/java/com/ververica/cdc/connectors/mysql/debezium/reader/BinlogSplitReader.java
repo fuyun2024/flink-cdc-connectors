@@ -18,6 +18,9 @@
 
 package com.ververica.cdc.connectors.mysql.debezium.reader;
 
+import com.ververica.cdc.connectors.mysql.debezium.task.context.AddedTableContext;
+import com.ververica.cdc.connectors.mysql.source.utils.TableUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.util.FlinkRuntimeException;
 
@@ -44,11 +47,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -198,6 +197,8 @@ public class BinlogSplitReader implements DebeziumReader<SourceRecord, MySqlSpli
         if (isDataChangeRecord(sourceRecord)) {
             TableId tableId = getTableId(sourceRecord);
             BinlogOffset position = getBinlogPosition(sourceRecord);
+            // 处理新表
+            addedTableIfNeeded();
             if (hasEnterPureBinlogPhase(tableId, position)) {
                 return true;
             }
@@ -213,7 +214,7 @@ public class BinlogSplitReader implements DebeziumReader<SourceRecord, MySqlSpli
                                 statefulTaskContext.getSchemaNameAdjuster());
                 for (FinishedSnapshotSplitInfo splitInfo : finishedSplitsInfo.get(tableId)) {
                     if (RecordUtils.splitKeyRangeContains(
-                                    key, splitInfo.getSplitStart(), splitInfo.getSplitEnd())
+                            key, splitInfo.getSplitStart(), splitInfo.getSplitEnd())
                             && position.isAfter(splitInfo.getHighWatermark())) {
                         return true;
                     }
@@ -238,8 +239,39 @@ public class BinlogSplitReader implements DebeziumReader<SourceRecord, MySqlSpli
         //  That the tables dynamically added after discovering captured tables in enumerator
         //  and before the lowest binlog offset of all table splits. This interval should be
         //  very short, so we don't support it for now.
-        return !maxSplitHighWatermarkMap.containsKey(tableId)
-                && capturedTableFilter.isIncluded(tableId);
+
+        //  return !maxSplitHighWatermarkMap.containsKey(tableId)
+        //          && capturedTableFilter.isIncluded(tableId);
+        return false;
+    }
+
+    private void addedTableIfNeeded() {
+
+
+        if (currentBinlogSplit.getAddedTableContext().hasAddedTables()) {
+            AddedTableContext addedTableContext = currentBinlogSplit.getAddedTableContext();
+            BinlogOffset startingOffset = currentBinlogSplit.getStartingOffset();
+
+            String firstAddedTable = addedTableContext.getFirstAddedTable();
+            while (StringUtils.isNotBlank(firstAddedTable)) {
+                TableId tableId = TableUtils.generateTableId(firstAddedTable);
+                // 增加信息，重新恢复时需要
+//                List<FinishedSnapshotSplitInfo> finishedSnapshotSplitInfos = currentBinlogSplitb
+//                        .getFinishedSnapshotSplitInfos();
+
+//                finishedSnapshotSplitInfos.add(new FinishedSnapshotSplitInfo(tableId, currentBinlogSplit.getStartingOffset()));
+//                currentBinlogSplit.setCompletedSplit();
+
+//                        finishedSplitsInfo.put(tableId, new ArrayList<>());
+
+                // shouldEmit() 放开这个表的数据
+                maxSplitHighWatermarkMap.put(tableId, startingOffset);
+
+                // 添加 table 对应的 gtid
+                addedTableContext.addUnReportTable(tableId.identifier(), startingOffset.getGtidSet());
+                firstAddedTable = addedTableContext.getFirstAddedTable();
+            }
+        }
     }
 
     private void configureFilter() {
@@ -249,8 +281,16 @@ public class BinlogSplitReader implements DebeziumReader<SourceRecord, MySqlSpli
         Map<TableId, BinlogOffset> tableIdBinlogPositionMap = new HashMap<>();
         // latest-offset mode
         if (finishedSplitInfos.isEmpty()) {
-            for (TableId tableId : currentBinlogSplit.getTableSchemas().keySet()) {
-                tableIdBinlogPositionMap.put(tableId, currentBinlogSplit.getStartingOffset());
+//            for (TableId tableId : currentBinlogSplit.getTableSchemas().keySet()) {
+//                tableIdBinlogPositionMap.put(tableId, currentBinlogSplit.getStartingOffset());
+//            }
+            Set<String> alreadyProcessedTables = currentBinlogSplit.getAddedTableContext().getAlreadyProcessedTables();
+            if (alreadyProcessedTables != null) {
+                BinlogOffset startingOffset = currentBinlogSplit.getStartingOffset();
+                for (String dbTable : alreadyProcessedTables) {
+                    TableId tableId = TableUtils.generateTableId(dbTable);
+                    tableIdBinlogPositionMap.put(tableId, startingOffset);
+                }
             }
         }
         // initial mode
