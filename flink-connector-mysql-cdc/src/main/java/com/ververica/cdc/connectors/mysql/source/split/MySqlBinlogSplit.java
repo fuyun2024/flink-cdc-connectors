@@ -18,6 +18,7 @@
 
 package com.ververica.cdc.connectors.mysql.source.split;
 
+import com.ververica.cdc.connectors.mysql.debezium.task.context.AddedTableContext;
 import com.ververica.cdc.connectors.mysql.source.offset.BinlogOffset;
 import io.debezium.relational.TableId;
 import io.debezium.relational.history.TableChanges.TableChange;
@@ -35,8 +36,10 @@ public class MySqlBinlogSplit extends MySqlSplit {
     private final BinlogOffset endingOffset;
     private final List<FinishedSnapshotSplitInfo> finishedSnapshotSplitInfos;
     private final Map<TableId, TableChange> tableSchemas;
-    private final int totalFinishedSplitSize;
+    private int totalFinishedSplitSize;
     @Nullable transient byte[] serializedFormCache;
+
+    private final AddedTableContext addedTableContext;
 
     public MySqlBinlogSplit(
             String splitId,
@@ -51,6 +54,24 @@ public class MySqlBinlogSplit extends MySqlSplit {
         this.finishedSnapshotSplitInfos = finishedSnapshotSplitInfos;
         this.tableSchemas = tableSchemas;
         this.totalFinishedSplitSize = totalFinishedSplitSize;
+        this.addedTableContext = new AddedTableContext();
+    }
+
+    public MySqlBinlogSplit(
+            String splitId,
+            BinlogOffset startingOffset,
+            BinlogOffset endingOffset,
+            List<FinishedSnapshotSplitInfo> finishedSnapshotSplitInfos,
+            Map<TableId, TableChange> tableSchemas,
+            int totalFinishedSplitSize,
+            AddedTableContext addedTableContext) {
+        super(splitId);
+        this.startingOffset = startingOffset;
+        this.endingOffset = endingOffset;
+        this.finishedSnapshotSplitInfos = finishedSnapshotSplitInfos;
+        this.tableSchemas = tableSchemas;
+        this.totalFinishedSplitSize = totalFinishedSplitSize;
+        this.addedTableContext = addedTableContext;
     }
 
     public BinlogOffset getStartingOffset() {
@@ -76,6 +97,14 @@ public class MySqlBinlogSplit extends MySqlSplit {
 
     public boolean isCompletedSplit() {
         return totalFinishedSplitSize == finishedSnapshotSplitInfos.size();
+    }
+
+    public AddedTableContext getAddedTableContext() {
+        return addedTableContext;
+    }
+
+    public void setCompletedSplit() {
+        this.totalFinishedSplitSize = finishedSnapshotSplitInfos.size();
     }
 
     @Override
