@@ -18,13 +18,10 @@
 
 package com.ververica.cdc.connectors.mysql.source.enumerator;
 
-import com.ververica.cdc.connectors.mysql.source.events.*;
-import com.ververica.cdc.connectors.mysql.source.utils.HttpUtils;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.connector.source.SourceEvent;
 import org.apache.flink.api.connector.source.SplitEnumerator;
 import org.apache.flink.api.connector.source.SplitEnumeratorContext;
-import org.apache.flink.shaded.guava18.com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.apache.flink.util.FlinkRuntimeException;
 
 import org.apache.flink.shaded.guava18.com.google.common.collect.Lists;
@@ -32,6 +29,11 @@ import org.apache.flink.shaded.guava18.com.google.common.collect.Lists;
 import com.ververica.cdc.connectors.mysql.source.assigners.MySqlSplitAssigner;
 import com.ververica.cdc.connectors.mysql.source.assigners.state.PendingSplitsState;
 import com.ververica.cdc.connectors.mysql.source.config.MySqlSourceConfig;
+import com.ververica.cdc.connectors.mysql.source.events.BinlogSplitMetaEvent;
+import com.ververica.cdc.connectors.mysql.source.events.BinlogSplitMetaRequestEvent;
+import com.ververica.cdc.connectors.mysql.source.events.FinishedSnapshotSplitsAckEvent;
+import com.ververica.cdc.connectors.mysql.source.events.FinishedSnapshotSplitsReportEvent;
+import com.ververica.cdc.connectors.mysql.source.events.FinishedSnapshotSplitsRequestEvent;
 import com.ververica.cdc.connectors.mysql.source.offset.BinlogOffset;
 import com.ververica.cdc.connectors.mysql.source.split.FinishedSnapshotSplitInfo;
 import com.ververica.cdc.connectors.mysql.source.split.MySqlSplit;
@@ -40,10 +42,12 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
-import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 /**
@@ -54,8 +58,6 @@ import java.util.stream.Collectors;
 public class MySqlSourceEnumerator implements SplitEnumerator<MySqlSplit, PendingSplitsState> {
     private static final Logger LOG = LoggerFactory.getLogger(MySqlSourceEnumerator.class);
     private static final long CHECK_EVENT_INTERVAL = 30_000L;
-    private static final long NEW_TABLE_SCAN_INTERVAL = 30_000L;
-
 
     private final SplitEnumeratorContext<MySqlSplit> context;
     private final MySqlSourceConfig sourceConfig;
@@ -64,12 +66,6 @@ public class MySqlSourceEnumerator implements SplitEnumerator<MySqlSplit, Pendin
     // using TreeSet to prefer assigning binlog split to task-0 for easier debug
     private final TreeSet<Integer> readersAwaitingSplit;
     private List<List<FinishedSnapshotSplitInfo>> binlogSplitMeta;
-
-    private Integer binlogSubtaskId = null;
-    private Boolean scanTaskRunning = false;
-    private ExecutorService executor;
-
-    private Set<String> newTableIds;
 
     public MySqlSourceEnumerator(
             SplitEnumeratorContext<MySqlSplit> context,
@@ -133,13 +129,6 @@ public class MySqlSourceEnumerator implements SplitEnumerator<MySqlSplit, Pendin
                     "The enumerator receives request for binlog split meta from subtask {}.",
                     subtaskId);
             sendBinlogMeta(subtaskId, (BinlogSplitMetaRequestEvent) sourceEvent);
-        } else if (sourceEvent instanceof BinlogSubTaskIdEvent) {
-            BinlogSubTaskIdEvent subTaskIdEvent = (BinlogSubTaskIdEvent) sourceEvent;
-            binlogSubtaskId = subTaskIdEvent.getSubtaskId();
-            scanNewTableByHttp();
-            LOG.info("The enumerator receives binlog subtask id  {}.", binlogSubtaskId);
-        } else if (sourceEvent instanceof AddedTableReportEvent) {
-            reportAddedTableSuccess((AddedTableReportEvent) sourceEvent);
         }
     }
 
@@ -159,7 +148,6 @@ public class MySqlSourceEnumerator implements SplitEnumerator<MySqlSplit, Pendin
     public void close() {
         LOG.info("Closing enumerator...");
         splitAssigner.close();
-        scanTaskRunning = false;
     }
 
     // ------------------------------------------------------------------------------------------
@@ -208,13 +196,6 @@ public class MySqlSourceEnumerator implements SplitEnumerator<MySqlSplit, Pendin
                         subtaskId, new FinishedSnapshotSplitsRequestEvent());
             }
         }
-
-        // send sub task id request
-        if (binlogSubtaskId == null) {
-            for (int subtaskId : subtaskIds) {
-                context.sendEventToSourceReader(subtaskId, new BinlogSubTaskIdRequestEvent());
-            }
-        }
     }
 
     private void sendBinlogMeta(int subTask, BinlogSplitMetaRequestEvent requestEvent) {
@@ -251,67 +232,4 @@ public class MySqlSourceEnumerator implements SplitEnumerator<MySqlSplit, Pendin
                     binlogSplitMeta.size() - 1);
         }
     }
-
-    public void scanNewTableByHttp() {
-        if (scanTaskRunning) {
-            return;
-        }
-
-        ThreadFactory threadFactory =
-                new ThreadFactoryBuilder().setNameFormat("new-table-scan").build();
-        this.executor = Executors.newSingleThreadExecutor(threadFactory);
-
-        newTableIds = Collections.synchronizedSet(new HashSet<>());
-        scanTaskRunning = true;
-
-        executor.submit(
-                () -> {
-                    try {
-                        while (scanTaskRunning && binlogSubtaskId != null) {
-                            LOG.debug("扫描获取新增的表信息");
-
-                            List<String> tableIds = HttpUtils.requestAddedTable();
-
-                            tableIds.forEach(tableId -> LOG.info("扫描到一张表 : " + tableId));
-                            newTableIds.addAll(tableIds);
-
-                            sendNewTableAddRequest();
-
-                            Thread.sleep(NEW_TABLE_SCAN_INTERVAL);
-                        }
-                    } catch (Exception e) {
-                        // not stop
-                        // scanTaskRunning = false;
-                        LOG.error("扫描获取新增的表信息失败", e);
-                    }
-                });
-    }
-
-    private void sendNewTableAddRequest() {
-        if (binlogSubtaskId != null && newTableIds != null && newTableIds.size() > 0) {
-
-            // todo 去重，并校验表是否存在
-
-            // 如果有新表增加
-            AddedTableRequestEvent event = new AddedTableRequestEvent(newTableIds);
-            context.sendEventToSourceReader(binlogSubtaskId, event);
-        }
-    }
-
-    private void reportAddedTableSuccess(AddedTableReportEvent tableReportEvent) {
-        // 新表分配成功
-        Map<String, String> unReportTable = tableReportEvent.getUnReportTable();
-
-        // 回调添加事件
-        HttpUtils.callbackTable(unReportTable);
-
-        // 清除新表中的数据
-        newTableIds.removeAll(unReportTable.keySet());
-
-        // 汇报 ack 事件
-        AddedTableAckEvent event = new AddedTableAckEvent(unReportTable);
-        context.sendEventToSourceReader(binlogSubtaskId, event);
-        LOG.info("The enumerator receives binlog subtask id  {}.", binlogSubtaskId);
-    }
-
 }

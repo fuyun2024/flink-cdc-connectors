@@ -262,7 +262,7 @@ public class BinlogSplitReader implements DebeziumReader<SourceRecord, MySqlSpli
                 finishedSnapshotSplitInfos.add(new FinishedSnapshotSplitInfo(tableId, currentBinlogSplit.getStartingOffset()));
                 currentBinlogSplit.setCompletedSplit();
 
-//                        finishedSplitsInfo.put(tableId, new ArrayList<>());
+//                inishedSplitsInfo.put(tableId, new ArrayList<>());
 
                 // shouldEmit() 放开这个表的数据
                 maxSplitHighWatermarkMap.put(tableId, startingOffset);
