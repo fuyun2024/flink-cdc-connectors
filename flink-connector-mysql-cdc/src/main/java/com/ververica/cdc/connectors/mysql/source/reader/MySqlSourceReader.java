@@ -18,10 +18,23 @@
 
 package com.ververica.cdc.connectors.mysql.source.reader;
 
+import org.apache.flink.api.connector.source.SourceEvent;
+import org.apache.flink.api.connector.source.SourceReaderContext;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.connector.base.source.reader.RecordEmitter;
+import org.apache.flink.connector.base.source.reader.RecordsWithSplitIds;
+import org.apache.flink.connector.base.source.reader.SingleThreadMultiplexSourceReaderBase;
+import org.apache.flink.connector.base.source.reader.fetcher.SingleThreadFetcherManager;
+import org.apache.flink.connector.base.source.reader.synchronization.FutureCompletingBlockingQueue;
+import org.apache.flink.util.FlinkRuntimeException;
+
+import org.apache.flink.shaded.guava18.com.google.common.util.concurrent.ThreadFactoryBuilder;
+
 import com.ververica.cdc.connectors.mysql.debezium.DebeziumUtils;
 import com.ververica.cdc.connectors.mysql.source.config.MySqlSourceConfig;
 import com.ververica.cdc.connectors.mysql.source.events.*;
 import com.ververica.cdc.connectors.mysql.source.offset.BinlogOffset;
+import com.ververica.cdc.connectors.mysql.source.sf.CallbackGtidBean;
 import com.ververica.cdc.connectors.mysql.source.sf.KafkaDeserializationSchema;
 import com.ververica.cdc.connectors.mysql.source.sf.NewTableBean;
 import com.ververica.cdc.connectors.mysql.source.split.*;
@@ -32,22 +45,13 @@ import io.debezium.connector.mysql.MySqlConnection;
 import io.debezium.connector.mysql.MySqlConnectorConfig;
 import io.debezium.relational.TableId;
 import io.debezium.relational.history.TableChanges;
-import org.apache.flink.api.connector.source.SourceEvent;
-import org.apache.flink.api.connector.source.SourceReaderContext;
-import org.apache.flink.configuration.Configuration;
-import org.apache.flink.connector.base.source.reader.RecordEmitter;
-import org.apache.flink.connector.base.source.reader.RecordsWithSplitIds;
-import org.apache.flink.connector.base.source.reader.SingleThreadMultiplexSourceReaderBase;
-import org.apache.flink.connector.base.source.reader.fetcher.SingleThreadFetcherManager;
-import org.apache.flink.connector.base.source.reader.synchronization.FutureCompletingBlockingQueue;
-import org.apache.flink.shaded.guava18.com.google.common.util.concurrent.ThreadFactoryBuilder;
-import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.SQLException;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -57,12 +61,10 @@ import java.util.stream.Collectors;
 import static com.ververica.cdc.connectors.mysql.source.utils.ChunkUtils.getNextMetaGroupId;
 import static org.apache.flink.util.Preconditions.checkState;
 
-/**
- * The source reader for MySQL source splits.
- */
+/** The source reader for MySQL source splits. */
 public class MySqlSourceReader<T>
         extends SingleThreadMultiplexSourceReaderBase<
-        SourceRecord, T, MySqlSplit, MySqlSplitState> {
+                SourceRecord, T, MySqlSplit, MySqlSplitState> {
 
     private static final Logger LOG = LoggerFactory.getLogger(MySqlSourceReader.class);
     private static final long NEW_TABLE_SCAN_INTERVAL = 30_000L;
@@ -74,6 +76,7 @@ public class MySqlSourceReader<T>
 
     private MySqlBinlogSplit currentBinlogSplit;
     private ExecutorService executor;
+    private Map<String, NewTableBean> currentTableBeanMap = new ConcurrentHashMap<>();
 
     public MySqlSourceReader(
             FutureCompletingBlockingQueue<RecordsWithSplitIds<SourceRecord>> elementQueue,
@@ -107,11 +110,20 @@ public class MySqlSourceReader<T>
             return new MySqlSnapshotSplitState(split.asSnapshotSplit());
         } else {
             currentBinlogSplit = split.asBinlogSplit();
+
             // 刷新历史数据
-            List<NewTableBean> tableBeans = HttpUtils.requestAlreadyTable();
-            Set<String> collect = tableBeans.stream().map(bean -> bean.getDbTable()).collect(Collectors.toSet());
-            currentBinlogSplit.getAddedTableContext().addAlreadyProcessedTables(collect);
-            writerKafkaConfigToSchema(tableBeans);
+            List<NewTableBean> tableBeans =
+                    HttpUtils.requestAlreadyTable(sourceConfig.getGetAddedTableUrl());
+            if (tableBeans != null && tableBeans.size() > 0) {
+                Set<String> collect =
+                        tableBeans.stream()
+                                .map(bean -> bean.getDbTable())
+                                .collect(Collectors.toSet());
+                collect.forEach(tableId -> LOG.info("恢复已经处理的表 ：" + tableId));
+                currentBinlogSplit.getAddedTableContext().addAlreadyProcessedTables(collect);
+                writerKafkaConfigToSchema(tableBeans);
+            }
+
             return new MySqlBinlogSplitState(split.asBinlogSplit());
         }
     }
@@ -126,6 +138,8 @@ public class MySqlSourceReader<T>
 
         // add binlog splits who are uncompleted
         stateSplits.addAll(uncompletedBinlogSplits.values());
+
+        callbackAddedTableSuccess();
 
         return stateSplits;
     }
@@ -192,7 +206,7 @@ public class MySqlSourceReader<T>
                     new MySqlConnectorConfig(sourceConfig.getDbzConfiguration()));
 
             try (MySqlConnection jdbc =
-                         DebeziumUtils.createMySqlConnection(sourceConfig.getDbzConfiguration())) {
+                    DebeziumUtils.createMySqlConnection(sourceConfig.getDbzConfiguration())) {
                 Map<TableId, TableChanges.TableChange> tableSchemas =
                         TableDiscoveryUtils.discoverCapturedTableSchemas(sourceConfig, jdbc);
                 LOG.info("The table schema discovery for binlog split {} success", splitId);
@@ -307,7 +321,6 @@ public class MySqlSourceReader<T>
         return splitState.toMySqlSplit();
     }
 
-
     public void scanNewTableByHttp() {
         ThreadFactory threadFactory =
                 new ThreadFactoryBuilder().setNameFormat("scan-new-table").build();
@@ -319,11 +332,12 @@ public class MySqlSourceReader<T>
                         while (currentBinlogSplit != null) {
                             LOG.debug("扫描获取新增的表信息");
 
-                            List<NewTableBean> newTableBeans = HttpUtils.requestAddedTable();
-                            newTableBeans.forEach(bean -> LOG.info("扫描到一张表 : " + bean.getDbTable()));
+                            List<NewTableBean> newTableBeans = HttpUtils.requestAddedTable(null);
+                            if (newTableBeans != null && newTableBeans.size() > 0) {
 
-                            // handleNewTable
-                            handleNewTable(newTableBeans);
+                                // handleNewTable
+                                handleNewTable(newTableBeans);
+                            }
 
                             // callbackAddedTableSuccess
                             callbackAddedTableSuccess();
@@ -344,18 +358,34 @@ public class MySqlSourceReader<T>
      */
     private void handleNewTable(List<NewTableBean> newTableBeans) {
         if (newTableBeans != null && newTableBeans.size() > 0) {
-            // 把 kafka 配置信息写入到 schema 中
-            writerKafkaConfigToSchema(newTableBeans);
 
-            Set<String> tableIds = newTableBeans.stream()
-                    .map(bean -> bean.getDbTable())
-                    .collect(Collectors.toSet());
+            Map<String, NewTableBean> tableBeanMap = new HashMap<>();
+            for (NewTableBean bean : newTableBeans) {
+                tableBeanMap.put(bean.getDbTable(), bean);
+            }
+
+            Set<String> tableIds =
+                    newTableBeans.stream()
+                            .map(bean -> bean.getDbTable())
+                            .collect(Collectors.toSet());
+
+            // 保存
+            this.currentTableBeanMap.putAll(tableBeanMap);
+
+            // 把 kafka 配置信息写入到 schema 中
+            writerKafkaConfigToSchema(tableBeanMap);
 
             // 添加到上下文中
             currentBinlogSplit.getAddedTableContext().addTableIfNotExist(tableIds);
+
+            try {
+                Thread.sleep(1000);
+                callbackAddedTableSuccess();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
         }
     }
-
 
     /**
      * 把 kafka 配置信息写入到 schema 中
@@ -368,30 +398,46 @@ public class MySqlSourceReader<T>
             tableBeanMap.put(bean.getDbTable(), bean);
         }
 
-        DebeziumDeserializationSchema deserializationSchema = ((MySqlRecordEmitter) recordEmitter).getDebeziumDeserializationSchema();
+        writerKafkaConfigToSchema(tableBeanMap);
+    }
+
+    private void writerKafkaConfigToSchema(Map<String, NewTableBean> tableBeanMap) {
+        DebeziumDeserializationSchema deserializationSchema =
+                ((MySqlRecordEmitter) recordEmitter).getDebeziumDeserializationSchema();
         if (deserializationSchema instanceof KafkaDeserializationSchema) {
             ((KafkaDeserializationSchema) deserializationSchema).addTableBeanMap(tableBeanMap);
         }
     }
 
-
-    /**
-     * 回调新增表成功
-     */
+    /** 回调新增表成功 */
     private void callbackAddedTableSuccess() {
         if (currentBinlogSplit.getAddedTableContext().hasUnReportTables()) {
             Map<String, String> unReportTables =
                     currentBinlogSplit.getAddedTableContext().getUnReportTables();
 
-            // 回调添加事件
-            HttpUtils.callbackTable(unReportTables);
+            List<CallbackGtidBean> callbackGtidBeans = new ArrayList<>();
 
-            // 回调成功，删除数据
-            currentBinlogSplit
-                    .getAddedTableContext()
-                    .ackUnReportTable(unReportTables);
+            unReportTables.forEach(
+                    (tableId, gtid) -> {
+                        NewTableBean currentNewTableBean = this.currentTableBeanMap.get(tableId);
+
+                        CallbackGtidBean bean = new CallbackGtidBean();
+                        bean.setDbName(currentNewTableBean.getDbName());
+                        bean.setTableName(currentNewTableBean.getTableName());
+                        bean.setDataSourceId(currentNewTableBean.getSourceId());
+                        bean.setApplyId(currentNewTableBean.getApplyId());
+                        bean.setGtid(gtid);
+                        bean.setDataSourceHostName(sourceConfig.getHostname());
+                        callbackGtidBeans.add(bean);
+                    });
+
+            // 回调添加事件
+            boolean result =
+                    HttpUtils.callbackGtid(sourceConfig.getCallbackGtidUrl(), callbackGtidBeans);
+            if (result) {
+                // 回调成功，删除数据
+                currentBinlogSplit.getAddedTableContext().ackUnReportTable(unReportTables);
+            }
         }
     }
-
-
 }

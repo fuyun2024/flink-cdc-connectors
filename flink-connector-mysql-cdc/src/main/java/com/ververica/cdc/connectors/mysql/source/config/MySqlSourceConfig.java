@@ -63,6 +63,9 @@ public class MySqlSourceConfig implements Serializable {
     private Configuration dbzConfiguration;
     private MySqlConnectorConfig dbzMySqlConfig;
 
+    private String getAddedTableUrl;
+    private String callbackGtidUrl;
+
     MySqlSourceConfig(
             String hostname,
             int port,
@@ -205,5 +208,21 @@ public class MySqlSourceConfig implements Serializable {
 
     public void setDbzMySqlConfig(MySqlConnectorConfig dbzMySqlConfig) {
         this.dbzMySqlConfig = dbzMySqlConfig;
+    }
+
+    public String getGetAddedTableUrl() {
+        return getAddedTableUrl;
+    }
+
+    public void setGetAddedTableUrl(String getAddedTableUrl) {
+        this.getAddedTableUrl = getAddedTableUrl;
+    }
+
+    public String getCallbackGtidUrl() {
+        return callbackGtidUrl;
+    }
+
+    public void setCallbackGtidUrl(String callbackGtidUrl) {
+        this.callbackGtidUrl = callbackGtidUrl;
     }
 }

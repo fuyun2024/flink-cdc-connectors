@@ -18,15 +18,13 @@
 
 package com.ververica.cdc.connectors.mysql.debezium.reader;
 
-import com.ververica.cdc.connectors.mysql.debezium.task.context.AddedTableContext;
-import com.ververica.cdc.connectors.mysql.source.utils.TableUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.util.FlinkRuntimeException;
 
 import org.apache.flink.shaded.guava18.com.google.common.util.concurrent.ThreadFactoryBuilder;
 
 import com.ververica.cdc.connectors.mysql.debezium.task.MySqlBinlogSplitReadTask;
+import com.ververica.cdc.connectors.mysql.debezium.task.context.AddedTableContext;
 import com.ververica.cdc.connectors.mysql.debezium.task.context.StatefulTaskContext;
 import com.ververica.cdc.connectors.mysql.source.offset.BinlogOffset;
 import com.ververica.cdc.connectors.mysql.source.split.FinishedSnapshotSplitInfo;
@@ -34,6 +32,7 @@ import com.ververica.cdc.connectors.mysql.source.split.MySqlBinlogSplit;
 import com.ververica.cdc.connectors.mysql.source.split.MySqlSplit;
 import com.ververica.cdc.connectors.mysql.source.utils.ChunkUtils;
 import com.ververica.cdc.connectors.mysql.source.utils.RecordUtils;
+import com.ververica.cdc.connectors.mysql.source.utils.TableUtils;
 import io.debezium.connector.base.ChangeEventQueue;
 import io.debezium.connector.mysql.MySqlOffsetContext;
 import io.debezium.connector.mysql.MySqlStreamingChangeEventSourceMetrics;
@@ -41,6 +40,7 @@ import io.debezium.pipeline.DataChangeEvent;
 import io.debezium.pipeline.source.spi.ChangeEventSource;
 import io.debezium.relational.TableId;
 import io.debezium.relational.Tables;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -214,7 +214,7 @@ public class BinlogSplitReader implements DebeziumReader<SourceRecord, MySqlSpli
                                 statefulTaskContext.getSchemaNameAdjuster());
                 for (FinishedSnapshotSplitInfo splitInfo : finishedSplitsInfo.get(tableId)) {
                     if (RecordUtils.splitKeyRangeContains(
-                            key, splitInfo.getSplitStart(), splitInfo.getSplitEnd())
+                                    key, splitInfo.getSplitStart(), splitInfo.getSplitEnd())
                             && position.isAfter(splitInfo.getHighWatermark())) {
                         return true;
                     }
@@ -247,7 +247,6 @@ public class BinlogSplitReader implements DebeziumReader<SourceRecord, MySqlSpli
 
     private void addedTableIfNeeded() {
 
-
         if (currentBinlogSplit.getAddedTableContext().hasAddedTables()) {
             AddedTableContext addedTableContext = currentBinlogSplit.getAddedTableContext();
             BinlogOffset startingOffset = currentBinlogSplit.getStartingOffset();
@@ -256,19 +255,22 @@ public class BinlogSplitReader implements DebeziumReader<SourceRecord, MySqlSpli
             while (StringUtils.isNotBlank(firstAddedTable)) {
                 TableId tableId = TableUtils.generateTableId(firstAddedTable);
                 // 增加信息，重新恢复时需要
-//                List<FinishedSnapshotSplitInfo> finishedSnapshotSplitInfos = currentBinlogSplitb
-//                        .getFinishedSnapshotSplitInfos();
+                //                List<FinishedSnapshotSplitInfo> finishedSnapshotSplitInfos =
+                // currentBinlogSplitb
+                //                        .getFinishedSnapshotSplitInfos();
 
-//                finishedSnapshotSplitInfos.add(new FinishedSnapshotSplitInfo(tableId, currentBinlogSplit.getStartingOffset()));
-//                currentBinlogSplit.setCompletedSplit();
+                //                finishedSnapshotSplitInfos.add(new
+                // FinishedSnapshotSplitInfo(tableId, currentBinlogSplit.getStartingOffset()));
+                //                currentBinlogSplit.setCompletedSplit();
 
-//                        finishedSplitsInfo.put(tableId, new ArrayList<>());
+                //                        finishedSplitsInfo.put(tableId, new ArrayList<>());
 
                 // shouldEmit() 放开这个表的数据
                 maxSplitHighWatermarkMap.put(tableId, startingOffset);
 
                 // 添加 table 对应的 gtid
-                addedTableContext.addUnReportTable(tableId.identifier(), startingOffset.getGtidSet());
+                addedTableContext.addUnReportTable(
+                        tableId.identifier(), startingOffset.getGtidSet());
                 firstAddedTable = addedTableContext.getFirstAddedTable();
             }
         }
@@ -281,10 +283,12 @@ public class BinlogSplitReader implements DebeziumReader<SourceRecord, MySqlSpli
         Map<TableId, BinlogOffset> tableIdBinlogPositionMap = new HashMap<>();
         // latest-offset mode
         if (finishedSplitInfos.isEmpty()) {
-//            for (TableId tableId : currentBinlogSplit.getTableSchemas().keySet()) {
-//                tableIdBinlogPositionMap.put(tableId, currentBinlogSplit.getStartingOffset());
-//            }
-            Set<String> alreadyProcessedTables = currentBinlogSplit.getAddedTableContext().getAlreadyProcessedTables();
+            //            for (TableId tableId : currentBinlogSplit.getTableSchemas().keySet()) {
+            //                tableIdBinlogPositionMap.put(tableId,
+            // currentBinlogSplit.getStartingOffset());
+            //            }
+            Set<String> alreadyProcessedTables =
+                    currentBinlogSplit.getAddedTableContext().getAlreadyProcessedTables();
             if (alreadyProcessedTables != null) {
                 BinlogOffset startingOffset = currentBinlogSplit.getStartingOffset();
                 for (String dbTable : alreadyProcessedTables) {

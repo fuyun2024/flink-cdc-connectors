@@ -1,6 +1,5 @@
 package com.ververica.cdc.connectors.mysql.debezium.task.context;
 
-
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,7 +17,6 @@ public class AddedTableContext implements Serializable {
 
     private final Object lock;
 
-
     public AddedTableContext() {
         this.addedTables = new HashSet<>();
         this.alreadyProcessedTables = new HashSet<>();
@@ -29,8 +27,11 @@ public class AddedTableContext implements Serializable {
     public void addTableIfNotExist(Set<String> tables) {
         synchronized (lock) {
             for (String table : tables) {
-                if (StringUtils.isNotBlank(table) && !addedTables.contains(table)
-                        && !unReportTables.containsKey(table) && !alreadyProcessedTables.contains(table)) {
+                if (StringUtils.isNotBlank(table)
+                        && !addedTables.contains(table)
+                        && !unReportTables.containsKey(table)
+                        && !alreadyProcessedTables.contains(table)) {
+                    LOG.info("扫描到一张新添加的表 : " + table);
                     addedTables.add(table);
                 }
             }
@@ -56,12 +57,13 @@ public class AddedTableContext implements Serializable {
 
     public void ackUnReportTable(Map<String, String> reportTable) {
         synchronized (lock) {
-            reportTable.forEach((table, gtid) -> {
-                LOG.info("table : {} ack 数据成功，新增表处理流程完成", table);
-                if (unReportTables.remove(table, gtid)) {
-                    alreadyProcessedTables.add(table);
-                }
-            });
+            reportTable.forEach(
+                    (table, gtid) -> {
+                        LOG.info("table : {} ack 数据成功，新增表处理流程完成", table);
+                        if (unReportTables.remove(table, gtid)) {
+                            alreadyProcessedTables.add(table);
+                        }
+                    });
         }
     }
 
@@ -70,7 +72,6 @@ public class AddedTableContext implements Serializable {
             alreadyProcessedTables.forEach(key -> this.unReportTables.remove(key));
             this.addedTables.removeAll(alreadyProcessedTables);
             this.alreadyProcessedTables.addAll(alreadyProcessedTables);
-
         }
     }
 

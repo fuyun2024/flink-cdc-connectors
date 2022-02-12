@@ -211,6 +211,16 @@ public class MySqlSourceBuilder<T> {
         return this;
     }
 
+    public MySqlSourceBuilder<T> getAddedTableUrl(String getAddedTableUrl) {
+        this.configFactory.getAddedTableUrl(getAddedTableUrl);
+        return this;
+    }
+
+    public MySqlSourceBuilder<T> callbackGtidUrl(String callbackGtidUrl) {
+        this.configFactory.callbackGtidUrl(callbackGtidUrl);
+        return this;
+    }
+
     /**
      * Build the {@link MySqlSource}.
      *

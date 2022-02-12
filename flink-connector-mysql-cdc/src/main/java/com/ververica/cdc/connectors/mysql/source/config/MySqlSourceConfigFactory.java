@@ -70,6 +70,9 @@ public class MySqlSourceConfigFactory implements Serializable {
     private boolean includeSchemaChanges = false;
     private Properties dbzProperties;
 
+    private String getAddedTableUrl;
+    private String callbackGtidUrl;
+
     public MySqlSourceConfigFactory hostname(String hostname) {
         this.hostname = hostname;
         return this;
@@ -227,6 +230,16 @@ public class MySqlSourceConfigFactory implements Serializable {
         return this;
     }
 
+    public MySqlSourceConfigFactory getAddedTableUrl(String getAddedTableUrl) {
+        this.getAddedTableUrl = getAddedTableUrl;
+        return this;
+    }
+
+    public MySqlSourceConfigFactory callbackGtidUrl(String callbackGtidUrl) {
+        this.callbackGtidUrl = callbackGtidUrl;
+        return this;
+    }
+
     /** Creates a new {@link MySqlSourceConfig} for the given subtask {@code subtaskId}. */
     public MySqlSourceConfig createConfig(int subtaskId) {
         Properties props = new Properties();
@@ -284,25 +297,30 @@ public class MySqlSourceConfigFactory implements Serializable {
             dbzProperties.forEach(props::put);
         }
 
-        return new MySqlSourceConfig(
-                hostname,
-                port,
-                username,
-                password,
-                databaseList,
-                tableList,
-                serverIdRange,
-                startupOptions,
-                splitSize,
-                splitMetaGroupSize,
-                fetchSize,
-                serverTimeZone,
-                connectTimeout,
-                connectMaxRetries,
-                connectionPoolSize,
-                distributionFactorUpper,
-                distributionFactorLower,
-                includeSchemaChanges,
-                props);
+        MySqlSourceConfig mySqlSourceConfig =
+                new MySqlSourceConfig(
+                        hostname,
+                        port,
+                        username,
+                        password,
+                        databaseList,
+                        tableList,
+                        serverIdRange,
+                        startupOptions,
+                        splitSize,
+                        splitMetaGroupSize,
+                        fetchSize,
+                        serverTimeZone,
+                        connectTimeout,
+                        connectMaxRetries,
+                        connectionPoolSize,
+                        distributionFactorUpper,
+                        distributionFactorLower,
+                        includeSchemaChanges,
+                        props);
+
+        mySqlSourceConfig.setGetAddedTableUrl(getAddedTableUrl);
+        mySqlSourceConfig.setCallbackGtidUrl(callbackGtidUrl);
+        return mySqlSourceConfig;
     }
 }
