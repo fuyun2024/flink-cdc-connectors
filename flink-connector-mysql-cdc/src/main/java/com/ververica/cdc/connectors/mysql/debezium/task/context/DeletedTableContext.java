@@ -7,33 +7,30 @@ import org.slf4j.LoggerFactory;
 import java.io.Serializable;
 import java.util.*;
 
-/** 添加表的上下文 */
-public class AddedTableContext implements Serializable {
+/** 删除表的上下文信息 */
+public class DeletedTableContext implements Serializable {
 
-    private static final Logger LOG = LoggerFactory.getLogger(AddedTableContext.class);
+    private static final Logger LOG = LoggerFactory.getLogger(DeletedTableContext.class);
 
-    private final Set<String> addedTables;
-    private final Set<String> alreadyProcessedTables;
+    private final Set<String> pendingDeletedTables;
     private final Map<String, String> unReportTables;
 
     private final Object lock;
 
-    public AddedTableContext() {
-        this.addedTables = new HashSet<>();
-        this.alreadyProcessedTables = new HashSet<>();
+    public DeletedTableContext() {
+        this.pendingDeletedTables = new HashSet<>();
         this.unReportTables = new HashMap<>();
         this.lock = this;
     }
 
-    public void addTableIfNotExist(Set<String> tables) {
+    public void deletedTable(Set<String> tables) {
         synchronized (lock) {
             for (String table : tables) {
                 if (StringUtils.isNotBlank(table)
-                        && !addedTables.contains(table)
-                        && !unReportTables.containsKey(table)
-                        && !alreadyProcessedTables.contains(table)) {
+                        && !pendingDeletedTables.contains(table)
+                        && !unReportTables.containsKey(table)) {
                     LOG.info("扫描到一张新添加的表 : " + table);
-                    addedTables.add(table);
+                    pendingDeletedTables.add(table);
                 }
             }
         }
@@ -41,8 +38,8 @@ public class AddedTableContext implements Serializable {
 
     public String getFirstAddedTable() {
         synchronized (lock) {
-            if (addedTables.size() > 0) {
-                Optional<String> first = addedTables.stream().findFirst();
+            if (pendingDeletedTables.size() > 0) {
+                Optional<String> first = pendingDeletedTables.stream().findFirst();
                 return first.get();
             }
             return null;
@@ -51,7 +48,7 @@ public class AddedTableContext implements Serializable {
 
     public void addUnReportTable(String table, String gtid) {
         synchronized (lock) {
-            addedTables.remove(table);
+            pendingDeletedTables.remove(table);
             unReportTables.put(table, gtid);
         }
     }
@@ -60,24 +57,14 @@ public class AddedTableContext implements Serializable {
         synchronized (lock) {
             reportTable.forEach(
                     (table, gtid) -> {
+                        unReportTables.remove(table, gtid);
                         LOG.info("table : {} ack 数据成功，新增表处理流程完成", table);
-                        if (unReportTables.remove(table, gtid)) {
-                            alreadyProcessedTables.add(table);
-                        }
                     });
         }
     }
 
-    public void addAlreadyProcessedTables(Set<String> alreadyProcessedTables) {
-        synchronized (lock) {
-            alreadyProcessedTables.forEach(key -> this.unReportTables.remove(key));
-            this.addedTables.removeAll(alreadyProcessedTables);
-            this.alreadyProcessedTables.addAll(alreadyProcessedTables);
-        }
-    }
-
     public boolean hasAddedTables() {
-        return addedTables.size() > 0;
+        return pendingDeletedTables.size() > 0;
     }
 
     public boolean hasUnReportTables() {
@@ -88,9 +75,5 @@ public class AddedTableContext implements Serializable {
         HashMap map = new HashMap();
         map.putAll(unReportTables);
         return map;
-    }
-
-    public Set<String> getAlreadyProcessedTables() {
-        return alreadyProcessedTables;
     }
 }

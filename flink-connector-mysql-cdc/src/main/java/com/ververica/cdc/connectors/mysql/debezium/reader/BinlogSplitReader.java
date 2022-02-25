@@ -199,6 +199,7 @@ public class BinlogSplitReader implements DebeziumReader<SourceRecord, MySqlSpli
             BinlogOffset position = getBinlogPosition(sourceRecord);
             // 处理新表
             addedTableIfNeeded();
+            deletedTableIfNeeded();
             if (hasEnterPureBinlogPhase(tableId, position)) {
                 return true;
             }
@@ -246,7 +247,6 @@ public class BinlogSplitReader implements DebeziumReader<SourceRecord, MySqlSpli
     }
 
     private void addedTableIfNeeded() {
-
         if (currentBinlogSplit.getAddedTableContext().hasAddedTables()) {
             AddedTableContext addedTableContext = currentBinlogSplit.getAddedTableContext();
             BinlogOffset startingOffset = currentBinlogSplit.getStartingOffset();
@@ -275,6 +275,8 @@ public class BinlogSplitReader implements DebeziumReader<SourceRecord, MySqlSpli
             }
         }
     }
+
+    private void deletedTableIfNeeded() {}
 
     private void configureFilter() {
         List<FinishedSnapshotSplitInfo> finishedSplitInfos =

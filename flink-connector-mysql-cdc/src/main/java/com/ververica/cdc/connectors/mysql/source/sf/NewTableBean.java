@@ -15,7 +15,7 @@ public class NewTableBean {
     private String kafkaClusterName;
     private String bootstrapServer;
     private String applyId;
-    private String sourceId;
+    private String dataSourceId;
     private Boolean state;
 
     public String getDbTable() {
@@ -78,12 +78,12 @@ public class NewTableBean {
         this.applyId = applyId;
     }
 
-    public String getSourceId() {
-        return sourceId;
+    public String getDataSourceId() {
+        return dataSourceId;
     }
 
-    public void setSourceId(String sourceId) {
-        this.sourceId = sourceId;
+    public void setDataSourceId(String dataSourceId) {
+        this.dataSourceId = dataSourceId;
     }
 
     public Boolean getState() {

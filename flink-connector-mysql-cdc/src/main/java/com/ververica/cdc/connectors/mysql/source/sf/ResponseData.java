@@ -4,6 +4,8 @@ public class ResponseData<T> {
 
     private int status;
 
+    private Boolean ok;
+
     private String errMsg;
 
     private T data;
@@ -47,5 +49,13 @@ public class ResponseData<T> {
 
     public void setErrMsg(String errMsg) {
         this.errMsg = errMsg;
+    }
+
+    public Boolean getOk() {
+        return ok;
+    }
+
+    public void setOk(Boolean ok) {
+        this.ok = ok;
     }
 }

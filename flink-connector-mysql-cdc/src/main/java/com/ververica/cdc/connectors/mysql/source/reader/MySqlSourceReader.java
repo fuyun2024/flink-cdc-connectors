@@ -332,7 +332,8 @@ public class MySqlSourceReader<T>
                         while (currentBinlogSplit != null) {
                             LOG.debug("扫描获取新增的表信息");
 
-                            List<NewTableBean> newTableBeans = HttpUtils.requestAddedTable(null);
+                            List<NewTableBean> newTableBeans =
+                                    HttpUtils.requestAddedTable(sourceConfig.getGetAddedTableUrl());
                             if (newTableBeans != null && newTableBeans.size() > 0) {
 
                                 // handleNewTable
@@ -379,7 +380,7 @@ public class MySqlSourceReader<T>
             currentBinlogSplit.getAddedTableContext().addTableIfNotExist(tableIds);
 
             try {
-                Thread.sleep(1000);
+                Thread.sleep(3000);
                 callbackAddedTableSuccess();
             } catch (InterruptedException e) {
                 e.printStackTrace();
@@ -424,7 +425,7 @@ public class MySqlSourceReader<T>
                         CallbackGtidBean bean = new CallbackGtidBean();
                         bean.setDbName(currentNewTableBean.getDbName());
                         bean.setTableName(currentNewTableBean.getTableName());
-                        bean.setDataSourceId(currentNewTableBean.getSourceId());
+                        bean.setDataSourceId(currentNewTableBean.getDataSourceId());
                         bean.setApplyId(currentNewTableBean.getApplyId());
                         bean.setGtid(gtid);
                         bean.setDataSourceHostName(sourceConfig.getHostname());

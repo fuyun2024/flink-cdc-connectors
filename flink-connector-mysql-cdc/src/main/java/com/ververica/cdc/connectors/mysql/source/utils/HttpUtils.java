@@ -1,5 +1,6 @@
 package com.ververica.cdc.connectors.mysql.source.utils;
 
+import cn.hutool.http.HttpResponse;
 import cn.hutool.http.HttpUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
@@ -99,11 +100,20 @@ public class HttpUtils {
     }
 
     private static ResponseData<List<NewTableBean>> httpAddedTable(String url) {
-        String result = HttpUtil.createGet(url).execute().body();
-        if (StringUtils.isNotEmpty(result)) {
-            return JSON.parseObject(
-                    result, new TypeReference<ResponseData<List<NewTableBean>>>() {});
+        HttpResponse httpResponse = HttpUtil.createGet(url).execute();
+        String body = httpResponse.body();
+        if (httpResponse.isOk() && StringUtils.isNotEmpty(body)) {
+            return JSON.parseObject(body, new TypeReference<ResponseData<List<NewTableBean>>>() {});
         }
         return null;
+    }
+
+    public static void main(String[] args) {
+        List<NewTableBean> a =
+                requestAddedTable(
+                        "http://qdm-dev.qdama.cn:8099/datahub-control/datatrain/binlog/flinkCallBackForAddTable?dataSourceId=17164");
+        List<NewTableBean> newTableBeans =
+                requestAlreadyTable(
+                        "http://qdm-dev.qdama.cn:8099/datahub-control/datatrain/binlog/flinkCallBackForAddTable?dataSourceId=17164");
     }
 }
