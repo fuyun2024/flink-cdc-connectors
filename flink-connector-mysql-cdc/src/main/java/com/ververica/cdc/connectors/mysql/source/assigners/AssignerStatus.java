@@ -108,6 +108,19 @@ public enum AssignerStatus {
             LOG.info("Assigner status changes from NEWLY_ADDED_ASSIGNING_FINISHED to SUSPENDED");
             return this.getNextStatus();
         }
+    },
+    NEWLY_ADDED_ASSIGNING_PARALLEL(5) {
+        @Override
+        public AssignerStatus getNextStatus() {
+            return NEWLY_ADDED_ASSIGNING_FINISHED;
+        }
+
+        @Override
+        public AssignerStatus onFinish() {
+            LOG.info(
+                    "Assigner status changes from NEWLY_ADDED_ASSIGNING_PARALLEL to NEWLY_ADDED_ASSIGNING_FINISHED");
+            return this.getNextStatus();
+        }
     };
 
     private static final Logger LOG = LoggerFactory.getLogger(AssignerStatus.class);
@@ -161,6 +174,8 @@ public enum AssignerStatus {
                 return NEWLY_ADDED_ASSIGNING;
             case 4:
                 return NEWLY_ADDED_ASSIGNING_FINISHED;
+            case 5:
+                return NEWLY_ADDED_ASSIGNING_FINISHED;
             default:
                 throw new IllegalStateException(
                         format(
@@ -196,5 +211,9 @@ public enum AssignerStatus {
     /** Returns whether the split assigner has finished its newly added tables assignment. */
     public static boolean isNewlyAddedAssigningFinished(AssignerStatus assignerStatus) {
         return assignerStatus == NEWLY_ADDED_ASSIGNING_FINISHED;
+    }
+
+    public static boolean isNewlyAddedAssigningParallel(AssignerStatus assignerStatus) {
+        return assignerStatus == NEWLY_ADDED_ASSIGNING_PARALLEL;
     }
 }

@@ -60,6 +60,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -201,13 +202,19 @@ public class MySqlSourceReader<T>
 
     private MySqlBinlogSplit discoverTableSchemasForBinlogSplit(MySqlBinlogSplit split) {
         final String splitId = split.splitId();
-        if (split.getTableSchemas().isEmpty()) {
+        if (split.getTableSchemas().isEmpty()
+                || sourceConfig.isNewlyAddedTableParallelReadEnabled()) {
             try (MySqlConnection jdbc =
                     DebeziumUtils.createMySqlConnection(sourceConfig.getDbzConfiguration())) {
                 Map<TableId, TableChanges.TableChange> tableSchemas =
                         TableDiscoveryUtils.discoverCapturedTableSchemas(sourceConfig, jdbc);
                 LOG.info("The table schema discovery for binlog split {} success", splitId);
-                return MySqlBinlogSplit.fillTableSchemas(split, tableSchemas);
+                if (split.getTableSchemas().size() < tableSchemas.size()
+                        && sourceConfig.isNewlyAddedTableParallelReadEnabled()) {
+                    return newlyAddedTableForBinlogSplit(split, tableSchemas);
+                } else {
+                    return MySqlBinlogSplit.fillTableSchemas(split, tableSchemas);
+                }
             } catch (SQLException e) {
                 LOG.error("Failed to obtains table schemas due to {}", e.getMessage());
                 throw new FlinkRuntimeException(e);
@@ -218,6 +225,33 @@ public class MySqlSourceReader<T>
                     split);
             return split;
         }
+    }
+
+    private MySqlBinlogSplit newlyAddedTableForBinlogSplit(
+            MySqlBinlogSplit split, Map<TableId, TableChanges.TableChange> tableSchemas) {
+        List<FinishedSnapshotSplitInfo> snapshotSplitInfos =
+                getFinishedSnapshotSplitInfosIfNeed(split, tableSchemas);
+        return MySqlBinlogSplit.fillNewlyAddTableInfos(split, tableSchemas, snapshotSplitInfos);
+    }
+
+    private List<FinishedSnapshotSplitInfo> getFinishedSnapshotSplitInfosIfNeed(
+            MySqlBinlogSplit split, Map<TableId, TableChanges.TableChange> tableSchemas) {
+        List<FinishedSnapshotSplitInfo> finishedSnapshotSplitInfos = new ArrayList<>();
+        Iterator<TableId> iterator = tableSchemas.keySet().iterator();
+        while (iterator.hasNext()) {
+            TableId tableId = iterator.next();
+            if (split.getTableSchemas().get(tableId) == null) {
+                LOG.info("find new added Table {} ", tableId.toString());
+                finishedSnapshotSplitInfos.add(
+                        new FinishedSnapshotSplitInfo(
+                                tableId,
+                                tableId.toString() + ":0",
+                                null,
+                                null,
+                                split.getStartingOffset()));
+            }
+        }
+        return finishedSnapshotSplitInfos;
     }
 
     @Override

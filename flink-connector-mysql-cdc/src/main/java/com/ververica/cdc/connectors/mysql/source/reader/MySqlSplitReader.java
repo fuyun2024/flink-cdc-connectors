@@ -72,6 +72,7 @@ public class MySqlSplitReader implements SplitReader<SourceRecord, MySqlSplit> {
 
         checkSplitOrStartNext();
         checkNeedStopBinlogReader();
+        checkNeedFlushTable();
 
         Iterator<SourceRecord> dataIt;
         try {
@@ -90,6 +91,12 @@ public class MySqlSplitReader implements SplitReader<SourceRecord, MySqlSplit> {
                 && context.needStopBinlogSplitReader()
                 && !currentReader.isFinished()) {
             ((BinlogSplitReader) currentReader).stopBinlogReadTask();
+        }
+    }
+
+    private void checkNeedFlushTable() {
+        if (currentReader instanceof BinlogSplitReader && !currentReader.isFinished()) {
+            ((BinlogSplitReader) currentReader).flushConfigureFilter();
         }
     }
 

@@ -69,6 +69,7 @@ public class MySqlSourceConfigFactory implements Serializable {
             SPLIT_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND.defaultValue();
     private boolean includeSchemaChanges = false;
     private boolean scanNewlyAddedTableEnabled = false;
+    private boolean newlyAddedTableParallelReadEnabled = false;
     private Properties dbzProperties;
 
     public MySqlSourceConfigFactory hostname(String hostname) {
@@ -214,6 +215,12 @@ public class MySqlSourceConfigFactory implements Serializable {
         return this;
     }
 
+    public MySqlSourceConfigFactory newlyAddedTableParallelReadEnabled(
+            boolean newlyAddedTableParallelReadEnabled) {
+        this.newlyAddedTableParallelReadEnabled = newlyAddedTableParallelReadEnabled;
+        return this;
+    }
+
     /** Specifies the startup options. */
     public MySqlSourceConfigFactory startupOptions(StartupOptions startupOptions) {
         switch (startupOptions.startupMode) {
@@ -311,6 +318,7 @@ public class MySqlSourceConfigFactory implements Serializable {
                 distributionFactorLower,
                 includeSchemaChanges,
                 scanNewlyAddedTableEnabled,
+                newlyAddedTableParallelReadEnabled,
                 props);
     }
 }

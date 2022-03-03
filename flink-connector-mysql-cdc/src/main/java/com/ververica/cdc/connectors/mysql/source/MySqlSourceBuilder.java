@@ -196,6 +196,12 @@ public class MySqlSourceBuilder<T> {
         return this;
     }
 
+    public MySqlSourceBuilder<T> newlyAddedTableParallelReadEnabled(
+            boolean newlyAddedTableParallelReadEnabled) {
+        this.configFactory.newlyAddedTableParallelReadEnabled(newlyAddedTableParallelReadEnabled);
+        return this;
+    }
+
     /** Specifies the startup options. */
     public MySqlSourceBuilder<T> startupOptions(StartupOptions startupOptions) {
         this.configFactory.startupOptions(startupOptions);

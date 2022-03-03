@@ -50,6 +50,7 @@ import java.util.stream.Collectors;
 
 import static com.ververica.cdc.connectors.mysql.debezium.DebeziumUtils.discoverCapturedTables;
 import static com.ververica.cdc.connectors.mysql.debezium.DebeziumUtils.openJdbcConnection;
+import static com.ververica.cdc.connectors.mysql.source.assigners.AssignerStatus.NEWLY_ADDED_ASSIGNING_PARALLEL;
 import static com.ververica.cdc.connectors.mysql.source.assigners.AssignerStatus.isAssigningFinished;
 import static com.ververica.cdc.connectors.mysql.source.assigners.AssignerStatus.isSuspended;
 
@@ -170,7 +171,11 @@ public class MySqlSnapshotSplitAssigner implements MySqlSplitAssigner {
                         // start the newly added tables process under binlog reading phase
                         LOG.info(
                                 "Found newly added tables, start capture newly added tables process under binlog reading phase");
-                        this.suspend();
+                        if (sourceConfig.isNewlyAddedTableParallelReadEnabled()) {
+                            this.parallelRead();
+                        } else {
+                            this.suspend();
+                        }
                     }
                 }
             } catch (Exception e) {
@@ -316,6 +321,12 @@ public class MySqlSnapshotSplitAssigner implements MySqlSplitAssigner {
         Preconditions.checkState(
                 isSuspended(assignerStatus), "Invalid assigner status {}", assignerStatus);
         assignerStatus = assignerStatus.wakeup();
+    }
+
+    public void parallelRead() {
+        Preconditions.checkState(
+                isAssigningFinished(assignerStatus), "Invalid assigner status {}", assignerStatus);
+        assignerStatus = NEWLY_ADDED_ASSIGNING_PARALLEL;
     }
 
     @Override

@@ -277,4 +277,11 @@ public class BinlogSplitReader implements DebeziumReader<SourceRecord, MySqlSpli
     public void stopBinlogReadTask() {
         this.currentTaskRunning = false;
     }
+
+    public void flushConfigureFilter() {
+        if (currentBinlogSplit.getTableSchemas().size() != maxSplitHighWatermarkMap.size()) {
+            // 重新刷新配置
+            configureFilter();
+        }
+    }
 }

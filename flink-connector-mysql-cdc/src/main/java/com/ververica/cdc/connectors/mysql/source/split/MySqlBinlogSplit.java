@@ -179,6 +179,22 @@ public class MySqlBinlogSplit extends MySqlSplit {
                 binlogSplit.isSuspended());
     }
 
+    public static MySqlBinlogSplit fillNewlyAddTableInfos(
+            MySqlBinlogSplit binlogSplit,
+            Map<TableId, TableChange> tableSchemas,
+            List<FinishedSnapshotSplitInfo> finishedSnapshotSplitInfos) {
+        finishedSnapshotSplitInfos.addAll(binlogSplit.getFinishedSnapshotSplitInfos());
+        tableSchemas.putAll(binlogSplit.getTableSchemas());
+        return new MySqlBinlogSplit(
+                binlogSplit.splitId,
+                binlogSplit.getStartingOffset(),
+                binlogSplit.getEndingOffset(),
+                finishedSnapshotSplitInfos,
+                tableSchemas,
+                finishedSnapshotSplitInfos.size(),
+                binlogSplit.isSuspended());
+    }
+
     public static MySqlBinlogSplit toNormalBinlogSplit(
             MySqlBinlogSplit suspendedBinlogSplit, int totalFinishedSplitSize) {
         return new MySqlBinlogSplit(
