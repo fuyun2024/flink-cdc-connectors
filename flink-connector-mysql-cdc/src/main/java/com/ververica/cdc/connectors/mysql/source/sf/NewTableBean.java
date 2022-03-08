@@ -3,7 +3,7 @@ package com.ververica.cdc.connectors.mysql.source.sf;
 import com.alibaba.fastjson.JSON;
 
 /**
- * ------------------------------------ description: @Author: created by eHui @Date: 2022/2/11
+ * ------------------------------------ description: @Author: created by eHui @Date: 2022/2/11.
  * ------------------------------------
  */
 public class NewTableBean {

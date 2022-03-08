@@ -32,12 +32,22 @@ import org.apache.flink.shaded.guava18.com.google.common.util.concurrent.ThreadF
 
 import com.ververica.cdc.connectors.mysql.debezium.DebeziumUtils;
 import com.ververica.cdc.connectors.mysql.source.config.MySqlSourceConfig;
-import com.ververica.cdc.connectors.mysql.source.events.*;
+import com.ververica.cdc.connectors.mysql.source.events.BinlogSplitMetaEvent;
+import com.ververica.cdc.connectors.mysql.source.events.BinlogSplitMetaRequestEvent;
+import com.ververica.cdc.connectors.mysql.source.events.FinishedSnapshotSplitsAckEvent;
+import com.ververica.cdc.connectors.mysql.source.events.FinishedSnapshotSplitsReportEvent;
+import com.ververica.cdc.connectors.mysql.source.events.FinishedSnapshotSplitsRequestEvent;
 import com.ververica.cdc.connectors.mysql.source.offset.BinlogOffset;
 import com.ververica.cdc.connectors.mysql.source.sf.CallbackGtidBean;
 import com.ververica.cdc.connectors.mysql.source.sf.KafkaDeserializationSchema;
 import com.ververica.cdc.connectors.mysql.source.sf.NewTableBean;
-import com.ververica.cdc.connectors.mysql.source.split.*;
+import com.ververica.cdc.connectors.mysql.source.split.FinishedSnapshotSplitInfo;
+import com.ververica.cdc.connectors.mysql.source.split.MySqlBinlogSplit;
+import com.ververica.cdc.connectors.mysql.source.split.MySqlBinlogSplitState;
+import com.ververica.cdc.connectors.mysql.source.split.MySqlSnapshotSplit;
+import com.ververica.cdc.connectors.mysql.source.split.MySqlSnapshotSplitState;
+import com.ververica.cdc.connectors.mysql.source.split.MySqlSplit;
+import com.ververica.cdc.connectors.mysql.source.split.MySqlSplitState;
 import com.ververica.cdc.connectors.mysql.source.utils.HttpUtils;
 import com.ververica.cdc.connectors.mysql.source.utils.TableDiscoveryUtils;
 import com.ververica.cdc.debezium.DebeziumDeserializationSchema;
@@ -50,7 +60,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.SQLException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -353,7 +368,7 @@ public class MySqlSourceReader<T>
     }
 
     /**
-     * 处理新增表事件
+     * 处理新增表事件.
      *
      * @param newTableBeans
      */
@@ -389,7 +404,7 @@ public class MySqlSourceReader<T>
     }
 
     /**
-     * 把 kafka 配置信息写入到 schema 中
+     * 把 kafka 配置信息写入到 schema 中.
      *
      * @param newTableBeans
      */
@@ -410,7 +425,7 @@ public class MySqlSourceReader<T>
         }
     }
 
-    /** 回调新增表成功 */
+    /** 回调新增表成功. */
     private void callbackAddedTableSuccess() {
         if (currentBinlogSplit.getAddedTableContext().hasUnReportTables()) {
             Map<String, String> unReportTables =

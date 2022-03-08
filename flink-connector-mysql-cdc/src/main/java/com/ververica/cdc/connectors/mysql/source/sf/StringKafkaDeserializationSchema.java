@@ -6,6 +6,7 @@ import org.apache.flink.util.Collector;
 
 import org.apache.kafka.connect.source.SourceRecord;
 
+/** string. */
 public class StringKafkaDeserializationSchema extends KafkaDeserializationSchema<String> {
 
     @Override

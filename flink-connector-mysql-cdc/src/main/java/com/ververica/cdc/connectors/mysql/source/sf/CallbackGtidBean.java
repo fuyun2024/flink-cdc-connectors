@@ -1,7 +1,7 @@
 package com.ververica.cdc.connectors.mysql.source.sf;
 
 /**
- * ------------------------------------ description: @Author: created by eHui @Date: 2022/2/11
+ * ------------------------------------ description: @Author: created by eHui @Date: 2022/2/11.
  * ------------------------------------
  */
 public class CallbackGtidBean {

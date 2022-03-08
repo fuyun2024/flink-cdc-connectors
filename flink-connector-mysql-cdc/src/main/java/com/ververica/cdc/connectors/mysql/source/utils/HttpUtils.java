@@ -15,12 +15,13 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/** httpUtils. */
 public class HttpUtils {
 
     private static final Logger LOG = LoggerFactory.getLogger(HttpUtils.class);
 
     /**
-     * binlog 任务新增表成功，并回调表对应的 Gtid
+     * binlog 任务新增表成功，并回调表对应的 Gtid.
      *
      * @param url
      * @param callbackGtidBeans
@@ -31,7 +32,7 @@ public class HttpUtils {
             String result = HttpUtil.post(url, JSON.toJSONString(callbackGtidBeans));
             if (result != null) {
                 ResponseData responseData = JSONObject.parseObject(result, ResponseData.class);
-                if (responseData.getStatus() == 200) {
+                if (responseData.getOk()) {
                     callbackGtidBeans.forEach(
                             bean -> {
                                 LOG.info(
@@ -52,7 +53,7 @@ public class HttpUtils {
     }
 
     /**
-     * 请求获取新增表
+     * 请求获取新增表.
      *
      * @return
      */
@@ -76,7 +77,7 @@ public class HttpUtils {
     }
 
     /**
-     * 请求获取新增表
+     * 请求获取新增表.
      *
      * @return
      */

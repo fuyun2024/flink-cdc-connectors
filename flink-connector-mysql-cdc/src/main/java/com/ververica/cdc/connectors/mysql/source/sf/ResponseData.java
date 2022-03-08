@@ -1,5 +1,10 @@
 package com.ververica.cdc.connectors.mysql.source.sf;
 
+/**
+ * response.
+ *
+ * @param <T>
+ */
 public class ResponseData<T> {
 
     private int status;

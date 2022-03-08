@@ -6,13 +6,18 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 
+/**
+ * KafkaDeserializationSchema.
+ *
+ * @param <T>
+ */
 public abstract class KafkaDeserializationSchema<T> implements DebeziumDeserializationSchema<T> {
 
-    /** 存储 db.table 与表信息的映射关系 */
+    /** 存储 db.table 与表信息的映射关系. */
     protected Map<String, NewTableBean> tableBeanMap;
 
     /**
-     * 添加 kafka 配置信息
+     * 添加 kafka 配置信息.
      *
      * @param tableBeanMap
      * @return
@@ -26,7 +31,7 @@ public abstract class KafkaDeserializationSchema<T> implements DebeziumDeseriali
     }
 
     /**
-     * 删除 kafka 配置信息
+     * 删除 kafka 配置信息.
      *
      * @param tableBeanMap
      * @return

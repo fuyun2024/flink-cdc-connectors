@@ -5,6 +5,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/** tableUtils. */
 public class TableUtils {
 
     private static final Logger LOG = LoggerFactory.getLogger(TableUtils.class);
