@@ -15,12 +15,6 @@ The Flink CDC Connectors integrates Debezium as the engine to capture data chang
 | Oracle | Database: 11, 12, 19 <br/>Oracle Driver: 19.3.0.0|
 | Sqlserver | Database: 2017, 2019 <br/>JDBC Driver: 7.2.2.jre8|
 
-## Supported Formats
-
-| Format | Supported Connector | Flink Version |
-| --- | --- | --- |
-| <a href="https://github.com/ververica/flink-cdc-connectors/wiki/Changelog-JSON-Format">Changelog Json</a> | <a href="https://ci.apache.org/projects/flink/flink-docs-release-1.13/dev/table/connectors/kafka.html">Apache Kafka</a> | 1.11+ |
-
 ## Supported Flink Versions 
 The following table shows the version mapping between Flink CDC Connectors and Flink:
 
@@ -252,6 +246,16 @@ In some cases, users can use the `JsonDebeziumDeserializationSchema(true)` Const
 }
 ```
 Usually, it is recommended to exclude schema because schema fields makes the messages very verbose which reduces parsing performance.
+
+The `JsonDebeziumDeserializationSchema` can also accept custom configuration of `JsonConverter`, for example if you want to obtain numeric output for decimal data,
+you can construct `JsonDebeziumDeserializationSchema` as following:
+
+```java
+ Map<String, Object> customConverterConfigs = new HashMap<>();
+ customConverterConfigs.put(JsonConverterConfig.DECIMAL_FORMAT_CONFIG, "numeric");
+ JsonDebeziumDeserializationSchema schema = 
+      new JsonDebeziumDeserializationSchema(true, customConverterConfigs);
+```
 
 ## Building from source
 

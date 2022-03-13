@@ -142,7 +142,7 @@ public class MySqlSourceReader<T>
         if (suspendedBinlogSplit != null) {
             unfinishedSplits.add(suspendedBinlogSplit);
         }
-        return stateSplits;
+        return unfinishedSplits;
     }
 
     @Override
