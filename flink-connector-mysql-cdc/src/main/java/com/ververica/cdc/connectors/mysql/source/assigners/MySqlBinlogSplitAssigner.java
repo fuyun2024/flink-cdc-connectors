@@ -29,6 +29,7 @@ import com.ververica.cdc.connectors.mysql.source.split.FinishedSnapshotSplitInfo
 import com.ververica.cdc.connectors.mysql.source.split.MySqlBinlogSplit;
 import com.ververica.cdc.connectors.mysql.source.split.MySqlSplit;
 import io.debezium.jdbc.JdbcConnection;
+import io.debezium.relational.TableId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -109,6 +110,11 @@ public class MySqlBinlogSplitAssigner implements MySqlSplitAssigner {
     @Override
     public void notifyCheckpointComplete(long checkpointId) {
         // nothing to do
+    }
+
+    @Override
+    public List<TableId> captureFinishedTableIds(List<TableId> unFinishedTableIds) {
+        return null;
     }
 
     @Override

@@ -41,6 +41,8 @@ public class MySqlBinlogSplit extends MySqlSplit {
     private final boolean isSuspended;
     @Nullable transient byte[] serializedFormCache;
 
+    private final List<TableId> newlyAddedTables;
+
     public MySqlBinlogSplit(
             String splitId,
             BinlogOffset startingOffset,
@@ -56,6 +58,7 @@ public class MySqlBinlogSplit extends MySqlSplit {
         this.tableSchemas = tableSchemas;
         this.totalFinishedSplitSize = totalFinishedSplitSize;
         this.isSuspended = isSuspended;
+        this.newlyAddedTables = new ArrayList<>();
     }
 
     public MySqlBinlogSplit(
@@ -72,6 +75,26 @@ public class MySqlBinlogSplit extends MySqlSplit {
         this.tableSchemas = tableSchemas;
         this.totalFinishedSplitSize = totalFinishedSplitSize;
         this.isSuspended = false;
+        this.newlyAddedTables = new ArrayList<>();
+    }
+
+    public MySqlBinlogSplit(
+            String splitId,
+            BinlogOffset startingOffset,
+            BinlogOffset endingOffset,
+            List<FinishedSnapshotSplitInfo> finishedSnapshotSplitInfos,
+            Map<TableId, TableChange> tableSchemas,
+            List<TableId> newlyAddedTables,
+            int totalFinishedSplitSize,
+            boolean isSuspended) {
+        super(splitId);
+        this.startingOffset = startingOffset;
+        this.endingOffset = endingOffset;
+        this.finishedSnapshotSplitInfos = finishedSnapshotSplitInfos;
+        this.tableSchemas = tableSchemas;
+        this.newlyAddedTables = newlyAddedTables;
+        this.totalFinishedSplitSize = totalFinishedSplitSize;
+        this.isSuspended = isSuspended;
     }
 
     public BinlogOffset getStartingOffset() {
@@ -101,6 +124,10 @@ public class MySqlBinlogSplit extends MySqlSplit {
 
     public boolean isCompletedSplit() {
         return totalFinishedSplitSize == finishedSnapshotSplitInfos.size();
+    }
+
+    public List<TableId> getNewlyAddedTables() {
+        return newlyAddedTables;
     }
 
     @Override
@@ -181,6 +208,7 @@ public class MySqlBinlogSplit extends MySqlSplit {
 
     public static MySqlBinlogSplit fillNewlyAddTableInfos(
             MySqlBinlogSplit binlogSplit,
+            List<TableId> newlyAddedTables,
             Map<TableId, TableChange> tableSchemas,
             List<FinishedSnapshotSplitInfo> finishedSnapshotSplitInfos) {
         finishedSnapshotSplitInfos.addAll(binlogSplit.getFinishedSnapshotSplitInfos());
@@ -191,6 +219,7 @@ public class MySqlBinlogSplit extends MySqlSplit {
                 binlogSplit.getEndingOffset(),
                 finishedSnapshotSplitInfos,
                 tableSchemas,
+                newlyAddedTables,
                 finishedSnapshotSplitInfos.size(),
                 binlogSplit.isSuspended());
     }

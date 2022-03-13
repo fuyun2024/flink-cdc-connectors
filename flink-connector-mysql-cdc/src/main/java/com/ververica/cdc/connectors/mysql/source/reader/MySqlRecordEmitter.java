@@ -141,4 +141,8 @@ public final class MySqlRecordEmitter<T>
             // do nothing
         }
     }
+
+    public DebeziumDeserializationSchema<T> getDebeziumDeserializationSchema() {
+        return debeziumDeserializationSchema;
+    }
 }

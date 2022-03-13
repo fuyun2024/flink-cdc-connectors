@@ -35,7 +35,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /** 给 SourceRecord 添加 binlog_timestamp 时间戳字段. */
-public class FillBinlogTimestampDeserializationSchema
+public class FillBinlogTimestampDeserialization
         implements DebeziumDeserializationSchema<SourceRecord> {
 
     private static final long serialVersionUID = -3168848963265670603L;
@@ -48,11 +48,11 @@ public class FillBinlogTimestampDeserializationSchema
 
     private final String timestampFieldName;
 
-    public FillBinlogTimestampDeserializationSchema() {
+    public FillBinlogTimestampDeserialization() {
         this.timestampFieldName = BINLOG_TIMESTAMP_FIELD_NAME;
     }
 
-    public FillBinlogTimestampDeserializationSchema(String timestampFieldName) {
+    public FillBinlogTimestampDeserialization(String timestampFieldName) {
         this.timestampFieldName = timestampFieldName;
     }
 

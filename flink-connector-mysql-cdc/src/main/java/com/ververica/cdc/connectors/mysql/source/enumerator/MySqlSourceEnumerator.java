@@ -35,6 +35,8 @@ import com.ververica.cdc.connectors.mysql.source.events.BinlogSplitMetaRequestEv
 import com.ververica.cdc.connectors.mysql.source.events.FinishedSnapshotSplitsAckEvent;
 import com.ververica.cdc.connectors.mysql.source.events.FinishedSnapshotSplitsReportEvent;
 import com.ververica.cdc.connectors.mysql.source.events.FinishedSnapshotSplitsRequestEvent;
+import com.ververica.cdc.connectors.mysql.source.events.FinishedSnapshotTableReportEvent;
+import com.ververica.cdc.connectors.mysql.source.events.FinishedSnapshotTableRequestEvent;
 import com.ververica.cdc.connectors.mysql.source.events.LatestFinishedSplitsSizeEvent;
 import com.ververica.cdc.connectors.mysql.source.events.LatestFinishedSplitsSizeRequestEvent;
 import com.ververica.cdc.connectors.mysql.source.events.SuspendBinlogReaderAckEvent;
@@ -43,6 +45,7 @@ import com.ververica.cdc.connectors.mysql.source.events.WakeupReaderEvent;
 import com.ververica.cdc.connectors.mysql.source.offset.BinlogOffset;
 import com.ververica.cdc.connectors.mysql.source.split.FinishedSnapshotSplitInfo;
 import com.ververica.cdc.connectors.mysql.source.split.MySqlSplit;
+import io.debezium.relational.TableId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -151,6 +154,16 @@ public class MySqlSourceEnumerator implements SplitEnumerator<MySqlSplit, Pendin
             handleSuspendBinlogReaderAckEvent(subtaskId);
         } else if (sourceEvent instanceof LatestFinishedSplitsSizeRequestEvent) {
             handleLatestFinishedSplitSizeRequest(subtaskId);
+        } else if (sourceEvent instanceof FinishedSnapshotTableRequestEvent) {
+            FinishedSnapshotTableRequestEvent requestEvent =
+                    (FinishedSnapshotTableRequestEvent) sourceEvent;
+            List<TableId> unFinishedTableIds =
+                    requestEvent.getUnFinishedTableIds().stream()
+                            .map(TableId::parse)
+                            .collect(Collectors.toList());
+            List<TableId> finishedTableIds =
+                    splitAssigner.captureFinishedTableIds(unFinishedTableIds);
+            finishedSnapshotTableIfNeed(finishedTableIds);
         }
     }
 
@@ -240,6 +253,19 @@ public class MySqlSourceEnumerator implements SplitEnumerator<MySqlSplit, Pendin
                         new WakeupReaderEvent(WakeupReaderEvent.WakeUpTarget.BINLOG_READER));
             }
             binlogReaderIsSuspended = false;
+        }
+    }
+
+    private void finishedSnapshotTableIfNeed(List<TableId> finishedTableIds) {
+        if (!finishedTableIds.isEmpty() && sourceConfig.isNewlyAddedTableParallelReadEnabled()) {
+            for (int subtaskId : getRegisteredReader()) {
+                List<String> stringList =
+                        finishedTableIds.stream()
+                                .map(TableId::toString)
+                                .collect(Collectors.toList());
+                context.sendEventToSourceReader(
+                        subtaskId, new FinishedSnapshotTableReportEvent(stringList));
+            }
         }
     }
 

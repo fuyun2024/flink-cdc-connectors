@@ -24,6 +24,7 @@ import com.ververica.cdc.connectors.mysql.source.assigners.state.PendingSplitsSt
 import com.ververica.cdc.connectors.mysql.source.offset.BinlogOffset;
 import com.ververica.cdc.connectors.mysql.source.split.FinishedSnapshotSplitInfo;
 import com.ververica.cdc.connectors.mysql.source.split.MySqlSplit;
+import io.debezium.relational.TableId;
 
 import java.util.Collection;
 import java.util.List;
@@ -100,6 +101,14 @@ public interface MySqlSplitAssigner {
      * @see CheckpointListener#notifyCheckpointComplete(long)
      */
     void notifyCheckpointComplete(long checkpointId);
+
+    /**
+     * Capture finished tableId.
+     *
+     * @param unFinishedTableIds
+     * @return
+     */
+    List<TableId> captureFinishedTableIds(List<TableId> unFinishedTableIds);
 
     /** Gets the split assigner status, see {@code AssignerStatus}. */
     AssignerStatus getAssignerStatus();

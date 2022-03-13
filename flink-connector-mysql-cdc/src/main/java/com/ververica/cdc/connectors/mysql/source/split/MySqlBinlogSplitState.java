@@ -74,6 +74,7 @@ public class MySqlBinlogSplitState extends MySqlSplitState {
                 getEndingOffset(),
                 binlogSplit.asBinlogSplit().getFinishedSnapshotSplitInfos(),
                 getTableSchemas(),
+                binlogSplit.getNewlyAddedTables(),
                 binlogSplit.getTotalFinishedSplitSize(),
                 binlogSplit.isSuspended());
     }

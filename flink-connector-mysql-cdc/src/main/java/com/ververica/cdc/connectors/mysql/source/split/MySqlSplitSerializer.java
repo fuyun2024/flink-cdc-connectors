@@ -35,6 +35,7 @@ import io.debezium.relational.history.TableChanges.TableChange;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -103,6 +104,7 @@ public final class MySqlSplitSerializer implements SimpleVersionedSerializer<MyS
             writeBinlogPosition(binlogSplit.getEndingOffset(), out);
             writeFinishedSplitsInfo(binlogSplit.getFinishedSnapshotSplitInfos(), out);
             writeTableSchemas(binlogSplit.getTableSchemas(), out);
+            writeTableIds(binlogSplit.getNewlyAddedTables(), out);
             out.writeInt(binlogSplit.getTotalFinishedSplitSize());
             final byte[] result = out.getCopyOfBuffer();
             out.clear();
@@ -156,6 +158,7 @@ public final class MySqlSplitSerializer implements SimpleVersionedSerializer<MyS
             List<FinishedSnapshotSplitInfo> finishedSplitsInfo =
                     readFinishedSplitsInfo(version, in);
             Map<TableId, TableChange> tableChangeMap = readTableSchemas(version, in);
+            List<TableId> tableIds = readTableIds(in);
             int totalFinishedSplitSize = finishedSplitsInfo.size();
             if (version > 3) {
                 totalFinishedSplitSize = in.readInt();
@@ -167,7 +170,9 @@ public final class MySqlSplitSerializer implements SimpleVersionedSerializer<MyS
                     endingOffset,
                     finishedSplitsInfo,
                     tableChangeMap,
-                    totalFinishedSplitSize);
+                    tableIds,
+                    totalFinishedSplitSize,
+                    false);
         } else {
             throw new IOException("Unknown split kind: " + splitKind);
         }
@@ -248,5 +253,24 @@ public final class MySqlSplitSerializer implements SimpleVersionedSerializer<MyS
                             tableId, splitId, splitStart, splitEnd, highWatermark));
         }
         return finishedSplitsInfo;
+    }
+
+    private void writeTableIds(Collection<TableId> tableIds, DataOutputSerializer out)
+            throws IOException {
+        final int size = tableIds.size();
+        out.writeInt(size);
+        for (TableId tableId : tableIds) {
+            out.writeUTF(tableId.toString());
+        }
+    }
+
+    private List<TableId> readTableIds(DataInputDeserializer in) throws IOException {
+        List<TableId> tableIds = new ArrayList<>();
+        final int size = in.readInt();
+        for (int i = 0; i < size; i++) {
+            String tableIdStr = in.readUTF();
+            tableIds.add(TableId.parse(tableIdStr));
+        }
+        return tableIds;
     }
 }

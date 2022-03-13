@@ -78,6 +78,8 @@ public class MySqlSnapshotSplitAssigner implements MySqlSplitAssigner {
 
     @Nullable private Long checkpointIdToFinish;
 
+    private Map<TableId, List<String>> cacheProcessingSplits;
+
     public MySqlSnapshotSplitAssigner(
             MySqlSourceConfig sourceConfig,
             int currentParallelism,
@@ -144,6 +146,7 @@ public class MySqlSnapshotSplitAssigner implements MySqlSplitAssigner {
         if (!isRemainingTablesCheckpointed && !isAssigningFinished(assignerStatus)) {
             try (JdbcConnection jdbc = openJdbcConnection(sourceConfig)) {
                 final List<TableId> discoverTables = discoverCapturedTables(jdbc, sourceConfig);
+                clearUpDeletedTable(discoverTables);
                 discoverTables.removeAll(alreadyProcessedTables);
                 this.remainingTables.addAll(discoverTables);
                 this.isTableIdCaseSensitive = DebeziumUtils.isTableIdCaseSensitive(jdbc);
@@ -153,36 +156,7 @@ public class MySqlSnapshotSplitAssigner implements MySqlSplitAssigner {
             }
         }
         captureNewlyAddedTables();
-    }
-
-    private void captureNewlyAddedTables() {
-        if (sourceConfig.isScanNewlyAddedTableEnabled()) {
-            // check whether we got newly added tables
-            try (JdbcConnection jdbc = openJdbcConnection(sourceConfig)) {
-                final List<TableId> newlyAddedTables = discoverCapturedTables(jdbc, sourceConfig);
-                newlyAddedTables.removeAll(alreadyProcessedTables);
-                newlyAddedTables.removeAll(remainingTables);
-                if (!newlyAddedTables.isEmpty()) {
-                    // if job is still in snapshot reading phase, directly add all newly added
-                    // tables
-                    LOG.info("Found newly added tables, start capture newly added tables process");
-                    remainingTables.addAll(newlyAddedTables);
-                    if (isAssigningFinished(assignerStatus)) {
-                        // start the newly added tables process under binlog reading phase
-                        LOG.info(
-                                "Found newly added tables, start capture newly added tables process under binlog reading phase");
-                        if (sourceConfig.isNewlyAddedTableParallelReadEnabled()) {
-                            this.parallelRead();
-                        } else {
-                            this.suspend();
-                        }
-                    }
-                }
-            } catch (Exception e) {
-                throw new FlinkRuntimeException(
-                        "Failed to discover remaining tables to capture", e);
-            }
-        }
+        initProcessingSplits();
     }
 
     @Override
@@ -193,6 +167,9 @@ public class MySqlSnapshotSplitAssigner implements MySqlSplitAssigner {
             MySqlSnapshotSplit split = iterator.next();
             iterator.remove();
             assignedSplits.put(split.splitId(), split);
+            cacheProcessingSplits
+                    .computeIfAbsent(split.getTableId(), k -> new ArrayList<>())
+                    .add(split.splitId());
             return Optional.of(split);
         } else {
             // it's turn for next table
@@ -243,6 +220,7 @@ public class MySqlSnapshotSplitAssigner implements MySqlSplitAssigner {
     @Override
     public void onFinishedSplits(Map<String, BinlogOffset> splitFinishedOffsets) {
         this.splitFinishedOffsets.putAll(splitFinishedOffsets);
+        removeFinishedTableIds(splitFinishedOffsets);
         if (allSplitsFinished() && AssignerStatus.isAssigning(assignerStatus)) {
             // Skip the waiting checkpoint when current parallelism is 1 which means we do not need
             // to care about the global output data order of snapshot splits and binlog split.
@@ -263,7 +241,8 @@ public class MySqlSnapshotSplitAssigner implements MySqlSplitAssigner {
             remainingSplits.add(split.asSnapshotSplit());
             // we should remove the add-backed splits from the assigned list,
             // because they are failed
-            assignedSplits.remove(split.splitId());
+            MySqlSnapshotSplit snapshotSplit = assignedSplits.remove(split.splitId());
+            cacheProcessingSplits.get(snapshotSplit).remove(split.splitId());
             splitFinishedOffsets.remove(split.splitId());
         }
     }
@@ -359,5 +338,114 @@ public class MySqlSnapshotSplitAssigner implements MySqlSplitAssigner {
             MySqlSourceConfig sourceConfig, boolean isTableIdCaseSensitive) {
         MySqlSchema mySqlSchema = new MySqlSchema(sourceConfig, isTableIdCaseSensitive);
         return new ChunkSplitter(mySqlSchema, sourceConfig);
+    }
+
+    private void initProcessingSplits() {
+        cacheProcessingSplits = new HashMap<>();
+        assignedSplits
+                .entrySet()
+                .forEach(
+                        entry -> {
+                            if (!splitFinishedOffsets.containsKey(entry.getKey())) {
+                                cacheProcessingSplits
+                                        .computeIfAbsent(
+                                                entry.getValue().getTableId(),
+                                                k -> new ArrayList<>())
+                                        .add(entry.getKey());
+                            }
+                        });
+    }
+
+    @Override
+    public List<TableId> captureFinishedTableIds(List<TableId> unFinishedTableIds) {
+        List<TableId> finishedTableIds = new ArrayList<>();
+        for (TableId unFinishedTableId : unFinishedTableIds) {
+            if (!remainingTables.contains(unFinishedTableId)
+                    && !cacheProcessingSplits.containsKey(unFinishedTableId)) {
+                finishedTableIds.add(unFinishedTableId);
+            }
+        }
+        return finishedTableIds;
+    }
+
+    private void removeFinishedTableIds(Map<String, BinlogOffset> splitFinishedOffsets) {
+        splitFinishedOffsets
+                .entrySet()
+                .forEach(
+                        entry -> {
+                            String splitId = entry.getKey();
+                            TableId finishedTableId = assignedSplits.get(splitId).getTableId();
+                            List<String> splitIdList = cacheProcessingSplits.get(finishedTableId);
+                            splitIdList.remove(splitId);
+                            if (splitIdList.isEmpty()
+                                    && !isContainsRemainingSplits(finishedTableId)) {
+                                cacheProcessingSplits.remove(finishedTableId);
+                            }
+                        });
+    }
+
+    private boolean isContainsRemainingSplits(TableId tableId) {
+        return remainingSplits.stream()
+                .anyMatch(snapshotSplit -> tableId.equals(snapshotSplit.getTableId()));
+    }
+
+    private void clearUpDeletedTable(List<TableId> discoverTables) {
+        List<TableId> checkPointProcessedTables = new ArrayList<>();
+        checkPointProcessedTables.addAll(alreadyProcessedTables);
+        checkPointProcessedTables.addAll(remainingTables);
+        if (!checkPointProcessedTables.isEmpty()) {
+            List<TableId> deletedTables =
+                    checkPointProcessedTables.stream()
+                            .filter(tableId -> !discoverTables.contains(tableId))
+                            .collect(Collectors.toList());
+            if (!deletedTables.isEmpty()) {
+                remainingTables.removeAll(deletedTables);
+                alreadyProcessedTables.removeAll(deletedTables);
+                remainingSplits.removeIf(
+                        snapshotSplit -> deletedTables.contains(snapshotSplit.getTableId()));
+
+                assignedSplits
+                        .entrySet()
+                        .removeIf(
+                                entry -> {
+                                    if (deletedTables.contains(entry.getValue().getTableId())) {
+                                        splitFinishedOffsets.remove(entry.getKey());
+                                        return true;
+                                    }
+                                    return false;
+                                });
+            }
+        }
+    }
+
+    private void captureNewlyAddedTables() {
+        if (sourceConfig.isScanNewlyAddedTableEnabled()) {
+            // check whether we got newly added tables
+            try (JdbcConnection jdbc = openJdbcConnection(sourceConfig)) {
+                final List<TableId> newlyAddedTables = discoverCapturedTables(jdbc, sourceConfig);
+                clearUpDeletedTable(newlyAddedTables);
+                newlyAddedTables.removeAll(alreadyProcessedTables);
+                newlyAddedTables.removeAll(remainingTables);
+                if (!newlyAddedTables.isEmpty()) {
+                    // if job is still in snapshot reading phase, directly add all newly added
+                    // tables
+                    LOG.info("Found newly added tables, start capture newly added tables process");
+                    remainingTables.addAll(newlyAddedTables);
+                    if (isAssigningFinished(assignerStatus)) {
+                        // start the newly added tables process under binlog reading phase
+                        LOG.info(
+                                "Found newly added tables, start capture newly added tables process under binlog reading phase");
+                        if (sourceConfig.isNewlyAddedTableParallelReadEnabled()) {
+                            this.parallelRead();
+                        } else {
+                            this.suspend();
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                throw new FlinkRuntimeException(
+                        "Failed to discover remaining tables to capture", e);
+            }
+        }
     }
 }

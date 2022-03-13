@@ -167,6 +167,11 @@ public class MySqlHybridSplitAssigner implements MySqlSplitAssigner {
     }
 
     @Override
+    public List<TableId> captureFinishedTableIds(List<TableId> unFinishedTableIds) {
+        return snapshotSplitAssigner.captureFinishedTableIds(unFinishedTableIds);
+    }
+
+    @Override
     public AssignerStatus getAssignerStatus() {
         return snapshotSplitAssigner.getAssignerStatus();
     }
