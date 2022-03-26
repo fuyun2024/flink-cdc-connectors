@@ -124,21 +124,6 @@ public class MySqlSourceReader<T>
         if (split.isSnapshotSplit()) {
             return new MySqlSnapshotSplitState(split.asSnapshotSplit());
         } else {
-            currentBinlogSplit = split.asBinlogSplit();
-
-            // 刷新历史数据
-            List<NewTableBean> tableBeans =
-                    HttpUtils.requestAlreadyTable(sourceConfig.getGetAddedTableUrl());
-            if (tableBeans != null && tableBeans.size() > 0) {
-                Set<String> collect =
-                        tableBeans.stream()
-                                .map(bean -> bean.getDbTable())
-                                .collect(Collectors.toSet());
-                collect.forEach(tableId -> LOG.info("恢复已经处理的表 ：" + tableId));
-                currentBinlogSplit.getAddedTableContext().addAlreadyProcessedTables(collect);
-                writerKafkaConfigToSchema(tableBeans);
-            }
-
             return new MySqlBinlogSplitState(split.asBinlogSplit());
         }
     }
@@ -197,6 +182,7 @@ public class MySqlSourceReader<T>
                             discoverTableSchemasForBinlogSplit(split.asBinlogSplit());
                     unfinishedSplits.add(mySqlBinlogSplit);
                     currentBinlogSplit = mySqlBinlogSplit;
+                    rerrstoringHistoricalData();
                     scanNewTableByHttp();
                 }
             }
@@ -345,7 +331,7 @@ public class MySqlSourceReader<T>
                 () -> {
                     try {
                         while (currentBinlogSplit != null) {
-                            LOG.debug("扫描获取新增的表信息");
+                            LOG.info("扫描获取新增表");
 
                             List<NewTableBean> newTableBeans =
                                     HttpUtils.requestAddedTable(sourceConfig.getGetAddedTableUrl());
@@ -454,6 +440,19 @@ public class MySqlSourceReader<T>
                 // 回调成功，删除数据
                 currentBinlogSplit.getAddedTableContext().ackUnReportTable(unReportTables);
             }
+        }
+    }
+
+    private void rerrstoringHistoricalData() {
+        // 刷新历史数据
+        List<NewTableBean> tableBeans =
+                HttpUtils.requestAlreadyTable(sourceConfig.getGetAddedTableUrl());
+        if (tableBeans != null && tableBeans.size() > 0) {
+            Set<String> collect =
+                    tableBeans.stream().map(bean -> bean.getDbTable()).collect(Collectors.toSet());
+            collect.forEach(tableId -> LOG.info("恢复已经处理的表 ：" + tableId));
+            currentBinlogSplit.getAddedTableContext().addAlreadyProcessedTables(collect);
+            writerKafkaConfigToSchema(tableBeans);
         }
     }
 }
