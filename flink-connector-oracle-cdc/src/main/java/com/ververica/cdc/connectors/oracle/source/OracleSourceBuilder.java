@@ -67,6 +67,16 @@ public class OracleSourceBuilder<T> {
     }
 
     /**
+     * An optional list of regular expressions that match schema names to be monitored; any schema
+     * name not included in the whitelist will be excluded from monitoring. By default all
+     * non-system schemas will be monitored.
+     */
+    public OracleSourceBuilder<T> schemaList(String... schemaList) {
+        this.configFactory.schemaList(schemaList);
+        return this;
+    }
+
+    /**
      * An required list of regular expressions that match fully-qualified table identifiers for
      * tables to be monitored; any table not included in the list will be excluded from monitoring.
      * Each identifier is of the form {@code <databaseName>.<tableName>}.
