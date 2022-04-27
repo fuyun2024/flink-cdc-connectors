@@ -61,7 +61,7 @@ public class OracleUtils {
         final String minMaxQuery =
                 String.format(
                         "SELECT MIN(%s), MAX(%s) FROM %s",
-                        quote(columnName), quote(columnName), quote(tableId));
+                        quote(columnName), quote(columnName), quoteSchemaAndTable(tableId));
         return jdbc.queryAndMap(
                 minMaxQuery,
                 rs -> {
@@ -80,7 +80,8 @@ public class OracleUtils {
             throws SQLException {
         final String analyzeTable =
                 String.format(
-                        "analyze table %s compute statistics for table", tableId.identifier());
+                        "analyze table %s compute statistics for table",
+                        quoteSchemaAndTable(tableId));
         final String rowCountQuery =
                 String.format(
                         "select NUM_ROWS from all_tables where TABLE_NAME = '%s'", tableId.table());
@@ -104,7 +105,7 @@ public class OracleUtils {
         final String minQuery =
                 String.format(
                         "SELECT MIN(%s) FROM %s WHERE %s > ?",
-                        quote(columnName), quote(tableId), quote(columnName));
+                        quote(columnName), quoteSchemaAndTable(tableId), quote(columnName));
         return jdbc.prepareQueryAndMap(
                 minQuery,
                 ps -> ps.setObject(1, excludedLowerBound),
@@ -134,7 +135,7 @@ public class OracleUtils {
                                 + ") AS T",
                         quotedColumn,
                         quotedColumn,
-                        quote(tableId),
+                        quoteSchemaAndTable(tableId),
                         quotedColumn,
                         quotedColumn,
                         chunkSize);
@@ -338,8 +339,15 @@ public class OracleUtils {
         return "\"" + dbOrTableName + "\"";
     }
 
-    public static String quote(TableId tableId) {
-        return tableId.toDoubleQuotedString();
+    public static String quoteSchemaAndTable(TableId tableId) {
+        StringBuilder quoted = new StringBuilder();
+
+        if (tableId.schema() != null && !tableId.schema().isEmpty()) {
+            quoted.append(quote(tableId.schema())).append(".");
+        }
+
+        quoted.append(quote(tableId.table()));
+        return quoted.toString();
     }
 
     private static PreparedStatement initStatement(JdbcConnection jdbc, String sql, int fetchSize)
@@ -394,7 +402,7 @@ public class OracleUtils {
             Optional<String> orderBy) {
         final StringBuilder sql = new StringBuilder("SELECT ");
         sql.append(projection).append(" FROM ");
-        sql.append(quotedTableIdString(tableId));
+        sql.append(quoteSchemaAndTable(tableId));
         if (condition.isPresent()) {
             sql.append(" WHERE ").append(condition.get());
         }
@@ -420,16 +428,12 @@ public class OracleUtils {
         sql.append("SELECT ");
         sql.append(projection);
         sql.append(" FROM ");
-        sql.append(quotedTableIdString(tableId));
+        sql.append(quoteSchemaAndTable(tableId));
         if (condition.isPresent()) {
             sql.append(" WHERE ").append(condition.get());
         }
         sql.append(" ORDER BY ").append(orderBy).append(" LIMIT ").append(limit);
         sql.append(") T");
         return sql.toString();
-    }
-
-    private static String quotedTableIdString(TableId tableId) {
-        return tableId.toQuotedString('"');
     }
 }

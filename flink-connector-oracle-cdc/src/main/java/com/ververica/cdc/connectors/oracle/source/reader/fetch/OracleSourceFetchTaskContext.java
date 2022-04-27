@@ -29,7 +29,6 @@ import com.ververica.cdc.connectors.base.source.reader.external.JdbcSourceFetchT
 import com.ververica.cdc.connectors.oracle.source.EmbeddedFlinkDatabaseHistory;
 import com.ververica.cdc.connectors.oracle.source.config.OracleSourceConfig;
 import com.ververica.cdc.connectors.oracle.source.meta.offset.RedoLogOffset;
-import com.ververica.cdc.connectors.oracle.source.utils.OracleConnectionUtils;
 import com.ververica.cdc.connectors.oracle.source.utils.OracleUtils;
 import io.debezium.connector.base.ChangeEventQueue;
 import io.debezium.connector.oracle.OracleChangeEventSourceMetricsFactory;
@@ -49,6 +48,7 @@ import io.debezium.pipeline.ErrorHandler;
 import io.debezium.pipeline.metrics.SnapshotChangeEventSourceMetrics;
 import io.debezium.pipeline.source.spi.EventMetadataProvider;
 import io.debezium.pipeline.spi.OffsetContext;
+import io.debezium.relational.RelationalTableFilters;
 import io.debezium.relational.Table;
 import io.debezium.relational.TableId;
 import io.debezium.schema.DataCollectionId;
@@ -105,7 +105,6 @@ public class OracleSourceFetchTaskContext extends JdbcSourceFetchTaskContext {
                 loadStartingOffsetState(
                         new LogMinerOracleOffsetContextLoader(connectorConfig), sourceSplitBase);
         validateAndLoadDatabaseHistory(offsetContext, databaseSchema);
-        OracleConnectionUtils.overwriteCatalog(databaseSchema, connectorConfig);
 
         this.taskContext = new OracleTaskContext(connectorConfig, databaseSchema);
         final int queueSize =
@@ -209,6 +208,11 @@ public class OracleSourceFetchTaskContext extends JdbcSourceFetchTaskContext {
     @Override
     public Offset getStreamOffset(SourceRecord sourceRecord) {
         return OracleUtils.getRedoLogPosition(sourceRecord);
+    }
+
+    @Override
+    public RelationalTableFilters getRelationalTableFilters() {
+        return getDbzConnectorConfig().getTableFilters();
     }
 
     /** Loads the connector's persistent offset (if present) via the given loader. */

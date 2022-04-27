@@ -39,6 +39,7 @@ import org.testcontainers.containers.OracleContainer;
 import org.testcontainers.containers.output.Slf4jLogConsumer;
 import org.testcontainers.lifecycle.Startables;
 
+import java.util.Properties;
 import java.util.stream.Stream;
 
 /** Example Tests for {@link JdbcIncrementalSource}. */
@@ -84,6 +85,10 @@ public class OracleChangeEventSourceExampleTest {
                 oracleContainer.getOraclePort(),
                 oracleContainer.getUsername(),
                 oracleContainer.getPassword());
+
+        Properties debeziumProperties = new Properties();
+        debeziumProperties.setProperty("debezium.log.mining.strategy", "online_catalog");
+        debeziumProperties.setProperty("debezium.log.mining.continuous.mine", "true");
         JdbcIncrementalSource<String> oracleChangeEventSource =
                 new OracleSourceBuilder()
                         .hostname(oracleContainer.getHost())
@@ -95,6 +100,7 @@ public class OracleChangeEventSourceExampleTest {
                         .password(oracleContainer.getPassword())
                         .deserializer(new JsonDebeziumDeserializationSchema())
                         .includeSchemaChanges(true) // output the schema changes as well
+                        .debeziumProperties(debeziumProperties)
                         .build();
 
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
