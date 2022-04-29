@@ -224,7 +224,7 @@ public class OracleE2eITCase extends FlinkContainerTestEnvironment {
         // see https://stackoverflow.com/a/9177263/4915129
         System.setProperty("oracle.jdbc.timezoneAsRegion", "false");
         try (Connection conn = getOracleJdbcConnection();
-             Statement statement = conn.createStatement()) {
+                Statement statement = conn.createStatement()) {
             statement.execute(
                     "UPDATE debezium.products SET DESCRIPTION='18oz carpenter hammer' WHERE ID=106");
             statement.execute("UPDATE debezium.products SET WEIGHT=5.1 WHERE ID=107");
