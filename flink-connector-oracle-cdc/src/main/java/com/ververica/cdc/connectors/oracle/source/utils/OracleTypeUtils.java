@@ -60,8 +60,10 @@ public class OracleTypeUtils {
                 return DataTypes.INT();
             case Types.FLOAT:
             case Types.REAL:
+            case OracleTypes.BINARY_FLOAT:
                 return DataTypes.FLOAT();
             case Types.DOUBLE:
+            case OracleTypes.BINARY_DOUBLE:
                 return DataTypes.DOUBLE();
             case Types.NUMERIC:
             case Types.DECIMAL:
@@ -75,6 +77,10 @@ public class OracleTypeUtils {
                 return column.length() >= 0
                         ? DataTypes.TIMESTAMP(column.length())
                         : DataTypes.TIMESTAMP();
+            case OracleTypes.INTERVALYM:
+                return DataTypes.INTERVAL(DataTypes.YEAR(), DataTypes.MONTH());
+            case OracleTypes.INTERVALDS:
+                return DataTypes.INTERVAL(DataTypes.DAY(), DataTypes.SECOND());
             case Types.BOOLEAN:
                 return DataTypes.BOOLEAN();
             default:
