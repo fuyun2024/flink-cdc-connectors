@@ -219,5 +219,9 @@ public class OracleSourceBuilder<T> {
                 OracleDialect dataSourceDialect) {
             super(configFactory, deserializationSchema, offsetFactory, dataSourceDialect);
         }
+
+        public static <T> OracleSourceBuilder<T> builder() {
+            return new OracleSourceBuilder<>();
+        }
     }
 }
