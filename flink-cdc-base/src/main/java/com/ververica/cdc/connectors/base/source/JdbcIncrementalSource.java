@@ -28,6 +28,7 @@ import org.apache.flink.api.java.typeutils.ResultTypeQueryable;
 import org.apache.flink.connector.base.source.reader.RecordsWithSplitIds;
 import org.apache.flink.connector.base.source.reader.synchronization.FutureCompletingBlockingQueue;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
+import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.util.FlinkRuntimeException;
 
 import com.ververica.cdc.connectors.base.config.JdbcSourceConfig;
@@ -54,6 +55,7 @@ import com.ververica.cdc.connectors.base.source.reader.JdbcSourceSplitReader;
 import com.ververica.cdc.debezium.DebeziumDeserializationSchema;
 import io.debezium.relational.TableId;
 
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -92,32 +94,21 @@ public class JdbcIncrementalSource<T>
                 };
     }
 
-    public JdbcIncrementalSource(
-            JdbcSourceConfigFactory configFactory,
-            DebeziumDeserializationSchema<T> deserializationSchema,
-            OffsetFactory offsetFactory,
-            JdbcDataSourceDialect dataSourceDialect,
-            SourceSplitSerializer sourceSplitSerializer) {
-        this.configFactory = configFactory;
-        this.deserializationSchema = deserializationSchema;
-        this.offsetFactory = offsetFactory;
-        this.dataSourceDialect = dataSourceDialect;
-        this.sourceSplitSerializer = sourceSplitSerializer;
-    }
-
     @Override
     public Boundedness getBoundedness() {
         return Boundedness.CONTINUOUS_UNBOUNDED;
     }
 
     @Override
-    public SourceReader createReader(SourceReaderContext readerContext) {
+    public SourceReader createReader(SourceReaderContext readerContext) throws Exception {
         // create source config for the given subtask (e.g. unique server id)
         JdbcSourceConfig sourceConfig = configFactory.create(readerContext.getIndexOfSubtask());
         FutureCompletingBlockingQueue<RecordsWithSplitIds<SourceRecords>> elementsQueue =
                 new FutureCompletingBlockingQueue<>();
-        final SourceReaderMetrics sourceReaderMetrics =
-                new SourceReaderMetrics(readerContext.metricGroup());
+        final Method metricGroupMethod = readerContext.getClass().getMethod("metricGroup");
+        metricGroupMethod.setAccessible(true);
+        final MetricGroup metricGroup = (MetricGroup) metricGroupMethod.invoke(readerContext);
+        final SourceReaderMetrics sourceReaderMetrics = new SourceReaderMetrics(metricGroup);
         sourceReaderMetrics.registerMetrics();
         Supplier<JdbcSourceSplitReader> splitReaderSupplier =
                 () ->
