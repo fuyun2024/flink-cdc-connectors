@@ -38,10 +38,4 @@ public class OracleSourceOptions extends JdbcSourceOptions {
                     .stringType()
                     .noDefaultValue()
                     .withDescription("Schema name of the Oracle database to monitor.");
-
-    public static final ConfigOption<Integer> PORT =
-            ConfigOptions.key("port")
-                    .intType()
-                    .defaultValue(1521)
-                    .withDescription("Integer port number of the Oracle database server.");
 }
