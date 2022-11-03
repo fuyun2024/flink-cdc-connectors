@@ -31,9 +31,11 @@ import java.util.Set;
 
 import static com.ververica.cdc.connectors.base.options.JdbcSourceOptions.CONNECTION_POOL_SIZE;
 import static com.ververica.cdc.connectors.base.options.JdbcSourceOptions.CONNECT_MAX_RETRIES;
+import static com.ververica.cdc.connectors.base.options.JdbcSourceOptions.CONNECT_TIMEOUT;
 import static com.ververica.cdc.connectors.base.options.JdbcSourceOptions.DATABASE_NAME;
 import static com.ververica.cdc.connectors.base.options.JdbcSourceOptions.HOSTNAME;
 import static com.ververica.cdc.connectors.base.options.JdbcSourceOptions.PASSWORD;
+import static com.ververica.cdc.connectors.base.options.JdbcSourceOptions.SERVER_TIME_ZONE;
 import static com.ververica.cdc.connectors.base.options.JdbcSourceOptions.TABLE_NAME;
 import static com.ververica.cdc.connectors.base.options.JdbcSourceOptions.USERNAME;
 import static com.ververica.cdc.connectors.base.options.SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE;
@@ -122,8 +124,11 @@ public class OracleTableSourceFactory implements DynamicTableSourceFactory {
         options.add(SCAN_STARTUP_MODE);
         options.add(SCAN_INCREMENTAL_SNAPSHOT_ENABLED);
         options.add(SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE);
+        options.add(SCAN_SNAPSHOT_FETCH_SIZE);
+        options.add(CONNECT_TIMEOUT);
         options.add(CONNECT_MAX_RETRIES);
         options.add(CONNECTION_POOL_SIZE);
+        options.add(SERVER_TIME_ZONE);
         return options;
     }
 
