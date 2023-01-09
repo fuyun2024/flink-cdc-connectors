@@ -47,7 +47,6 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nullable;
 
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -187,14 +186,13 @@ public class MySqlSourceEnumerator implements SplitEnumerator<MySqlSplit, Pendin
     // ------------------------------------------------------------------------------------------
 
     private void assignSplits() {
-        final Iterator<Integer> awaitingReader = readersAwaitingSplit.iterator();
-
-        while (awaitingReader.hasNext()) {
-            int nextAwaiting = awaitingReader.next();
+        while (readersAwaitingSplit.size() != 0) {
+            int randomIndex = (int) (Math.random() * readersAwaitingSplit.size());
+            Integer nextAwaiting = readersAwaitingSplit.toArray(new Integer[] {})[randomIndex];
             // if the reader that requested another split has failed in the meantime, remove
             // it from the list of waiting readers
             if (!context.registeredReaders().containsKey(nextAwaiting)) {
-                awaitingReader.remove();
+                readersAwaitingSplit.remove(nextAwaiting);
                 continue;
             }
 
@@ -202,7 +200,7 @@ public class MySqlSourceEnumerator implements SplitEnumerator<MySqlSplit, Pendin
             if (split.isPresent()) {
                 final MySqlSplit mySqlSplit = split.get();
                 context.assignSplit(mySqlSplit, nextAwaiting);
-                awaitingReader.remove();
+                readersAwaitingSplit.remove(nextAwaiting);
                 LOG.info("Assign split {} to subtask {}", mySqlSplit, nextAwaiting);
             } else {
                 // there is no available splits by now, skip assigning

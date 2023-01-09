@@ -63,6 +63,7 @@ import static com.ververica.cdc.connectors.mysql.source.utils.RecordUtils.getBin
 import static com.ververica.cdc.connectors.mysql.source.utils.RecordUtils.getSplitKey;
 import static com.ververica.cdc.connectors.mysql.source.utils.RecordUtils.getTableId;
 import static com.ververica.cdc.connectors.mysql.source.utils.RecordUtils.isDataChangeRecord;
+import static com.ververica.cdc.connectors.mysql.source.utils.RecordUtils.isSchemaChangeEvent;
 
 /**
  * A Debezium binlog reader implementation that also support reads binlog and filter overlapping
@@ -247,10 +248,17 @@ public class BinlogSplitReader implements DebeziumReader<SourceRecords, MySqlSpl
             }
             // not in the monitored splits scope, do not emit
             return false;
+        } else if (isSchemaChangeEvent(sourceRecord)) {
+            return containsTable(sourceRecord);
         }
         // always send the schema change event and signal event
         // we need record them to state of Flink
         return true;
+    }
+
+    private boolean containsTable(SourceRecord sourceRecord) {
+        TableId tableId = getTableId(sourceRecord);
+        return this.capturedTableFilter.isIncluded(tableId);
     }
 
     private boolean hasEnterPureBinlogPhase(TableId tableId, BinlogOffset position) {

@@ -27,7 +27,7 @@ import java.util.Properties;
 public class PooledDataSourceFactory {
 
     public static final String JDBC_URL_PATTERN =
-            "jdbc:mysql://%s:%s/?useInformationSchema=true&nullCatalogMeansCurrent=false&useUnicode=true";
+            "jdbc:mysql://%s:%s/?useInformationSchema=true&nullCatalogMeansCurrent=false&useUnicode=true&useSSL=false";
     public static final String CONNECTION_POOL_PREFIX = "connection-pool-";
     public static final String SERVER_TIMEZONE_KEY = "serverTimezone";
     public static final int MINIMUM_POOL_SIZE = 1;
