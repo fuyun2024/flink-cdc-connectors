@@ -30,6 +30,7 @@ import org.apache.kafka.connect.errors.ConnectException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.EOFException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -86,6 +87,12 @@ public class MySqlErrorHandler extends ErrorHandler {
             return;
         }
 
+        if (isDeserializeException(producerThrowable)) {
+            LOG.warn("skip deserialize exception : ", producerThrowable);
+            // skip
+            return;
+        }
+
         super.setProducerThrowable(producerThrowable);
     }
 
@@ -107,6 +114,12 @@ public class MySqlErrorHandler extends ErrorHandler {
                         .endsWith(
                                 "internal schema representation is probably out of sync with real database schema")
                 && isSettingStartingOffset();
+    }
+
+    private boolean isDeserializeException(Throwable t) {
+        Throwable rootCause = ExceptionUtils.getRootCause(t);
+        return rootCause instanceof EOFException
+                && rootCause.getMessage().contains("Failed to deserialize data of EventHeaderV4");
     }
 
     private boolean isSettingStartingOffset() {

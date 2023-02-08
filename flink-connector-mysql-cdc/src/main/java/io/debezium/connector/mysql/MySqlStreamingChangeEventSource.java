@@ -1086,83 +1086,17 @@ public class MySqlStreamingChangeEventSource
         skipEvent = false;
 
         try {
-            // Start the log reader, which starts background threads ...
-            if (context.isRunning()) {
-                long timeout = connectorConfig.getConnectionTimeout().toMillis();
-                long started = clock.currentTimeInMillis();
-                try {
-                    LOGGER.debug(
-                            "Attempting to establish binlog reader connection with timeout of {} ms",
-                            timeout);
-                    client.connect(timeout);
-                    // Need to wait for keepalive thread to be running, otherwise it can be left
-                    // orphaned
-                    // The problem is with timing. When the close is called too early after connect
-                    // then
-                    // the keepalive thread is not terminated
-                    if (client.isKeepAlive()) {
-                        LOGGER.info("Waiting for keepalive thread to start");
-                        final Metronome metronome = Metronome.parker(Duration.ofMillis(100), clock);
-                        int waitAttempts = 50;
-                        boolean keepAliveThreadRunning = false;
-                        while (!keepAliveThreadRunning && waitAttempts-- > 0) {
-                            for (Thread t : binaryLogClientThreads.values()) {
-                                if (t.getName().startsWith(KEEPALIVE_THREAD_NAME) && t.isAlive()) {
-                                    LOGGER.info("Keepalive thread is running");
-                                    keepAliveThreadRunning = true;
-                                }
-                            }
-                            metronome.pause();
-                        }
-                    }
-                } catch (TimeoutException e) {
-                    // If the client thread is interrupted *before* the client could connect, the
-                    // client throws a timeout exception
-                    // The only way we can distinguish this is if we get the timeout exception
-                    // before the specified timeout has
-                    // elapsed, so we simply check this (within 10%) ...
-                    long duration = clock.currentTimeInMillis() - started;
-                    if (duration > (0.9 * timeout)) {
-                        double actualSeconds = TimeUnit.MILLISECONDS.toSeconds(duration);
-                        throw new DebeziumException(
-                                "Timed out after "
-                                        + actualSeconds
-                                        + " seconds while waiting to connect to MySQL at "
-                                        + connectorConfig.hostname()
-                                        + ":"
-                                        + connectorConfig.port()
-                                        + " with user '"
-                                        + connectorConfig.username()
-                                        + "'",
-                                e);
-                    }
-                    // Otherwise, we were told to shutdown, so we don't care about the timeout
-                    // exception
-                } catch (AuthenticationException e) {
-                    throw new DebeziumException(
-                            "Failed to authenticate to the MySQL database at "
-                                    + connectorConfig.hostname()
-                                    + ":"
-                                    + connectorConfig.port()
-                                    + " with user '"
-                                    + connectorConfig.username()
-                                    + "'",
-                            e);
-                } catch (Throwable e) {
-                    throw new DebeziumException(
-                            "Unable to connect to the MySQL database at "
-                                    + connectorConfig.hostname()
-                                    + ":"
-                                    + connectorConfig.port()
-                                    + " with user '"
-                                    + connectorConfig.username()
-                                    + "': "
-                                    + e.getMessage(),
-                            e);
-                }
-            }
             while (context.isRunning()) {
-                Thread.sleep(100);
+                if (client.isConnected() && client.isOpenChannel()) {
+                    Thread.sleep(5000);
+                } else {
+                    try {
+                        client.disconnect();
+                        connect();
+                    } catch (Exception e) {
+                        LOGGER.info("Exception ", e);
+                    }
+                }
             }
         } finally {
             try {
@@ -1170,6 +1104,81 @@ public class MySqlStreamingChangeEventSource
             } catch (Exception e) {
                 LOGGER.info("Exception while stopping binary log client", e);
             }
+        }
+    }
+
+    private void connect() {
+        long timeout = connectorConfig.getConnectionTimeout().toMillis();
+        long started = clock.currentTimeInMillis();
+        try {
+            LOGGER.debug(
+                    "Attempting to establish binlog reader connection with timeout of {} ms",
+                    timeout);
+            client.connect(timeout);
+            // Need to wait for keepalive thread to be running, otherwise it can be left
+            // orphaned
+            // The problem is with timing. When the close is called too early after connect
+            // then
+            // the keepalive thread is not terminated
+            if (client.isKeepAlive()) {
+                LOGGER.info("Waiting for keepalive thread to start");
+                final Metronome metronome = Metronome.parker(Duration.ofMillis(100), clock);
+                int waitAttempts = 50;
+                boolean keepAliveThreadRunning = false;
+                while (!keepAliveThreadRunning && waitAttempts-- > 0) {
+                    for (Thread t : binaryLogClientThreads.values()) {
+                        if (t.getName().startsWith(KEEPALIVE_THREAD_NAME) && t.isAlive()) {
+                            LOGGER.info("Keepalive thread is running");
+                            keepAliveThreadRunning = true;
+                        }
+                    }
+                    metronome.pause();
+                }
+            }
+        } catch (TimeoutException e) {
+            // If the client thread is interrupted *before* the client could connect, the
+            // client throws a timeout exception
+            // The only way we can distinguish this is if we get the timeout exception
+            // before the specified timeout has
+            // elapsed, so we simply check this (within 10%) ...
+            long duration = clock.currentTimeInMillis() - started;
+            if (duration > (0.9 * timeout)) {
+                double actualSeconds = TimeUnit.MILLISECONDS.toSeconds(duration);
+                throw new DebeziumException(
+                        "Timed out after "
+                                + actualSeconds
+                                + " seconds while waiting to connect to MySQL at "
+                                + connectorConfig.hostname()
+                                + ":"
+                                + connectorConfig.port()
+                                + " with user '"
+                                + connectorConfig.username()
+                                + "'",
+                        e);
+            }
+            // Otherwise, we were told to shutdown, so we don't care about the timeout
+            // exception
+        } catch (AuthenticationException e) {
+            throw new DebeziumException(
+                    "Failed to authenticate to the MySQL database at "
+                            + connectorConfig.hostname()
+                            + ":"
+                            + connectorConfig.port()
+                            + " with user '"
+                            + connectorConfig.username()
+                            + "'",
+                    e);
+        } catch (Throwable e) {
+            throw new DebeziumException(
+                    "Unable to connect to the MySQL database at "
+                            + connectorConfig.hostname()
+                            + ":"
+                            + connectorConfig.port()
+                            + " with user '"
+                            + connectorConfig.username()
+                            + "': "
+                            + e.getMessage(),
+                    e);
         }
     }
 
