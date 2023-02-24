@@ -538,13 +538,13 @@ public class MySqlSnapshotSplitAssigner implements MySqlSplitAssigner {
                     remainingSplits.get(i).getTableId();
                     if (snapshotSplit.getTableId().equals(remainingSplits.get(i).getTableId())
                             && remainingSplits.get(i).getSplitStart() == null) {
-                        remainingSplits.add(i + 1, snapshotSplit);
+                        remainingSplits.add(i, snapshotSplit);
                         break;
                     }
                 }
 
                 if (i < 0) {
-                    remainingSplits.add(snapshotSplit);
+                    remainingSplits.add(0, snapshotSplit);
                 }
             }
         }
