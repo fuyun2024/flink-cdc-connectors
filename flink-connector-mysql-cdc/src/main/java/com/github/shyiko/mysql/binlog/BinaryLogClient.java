@@ -43,7 +43,8 @@ import com.github.shyiko.mysql.binlog.network.protocol.command.DumpBinaryLogGtid
 import com.github.shyiko.mysql.binlog.network.protocol.command.PingCommand;
 import com.github.shyiko.mysql.binlog.network.protocol.command.QueryCommand;
 import com.github.shyiko.mysql.binlog.network.protocol.command.SSLRequestCommand;
-import org.apache.commons.lang3.exception.ExceptionUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
@@ -73,8 +74,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /** MySQL replication stream client. */
 public class BinaryLogClient implements BinaryLogClientMXBean {
@@ -114,7 +113,7 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
     // https://dev.mysql.com/doc/internals/en/sending-more-than-16mbyte.html
     private static final int MAX_PACKET_LENGTH = 16777215;
 
-    private final Logger logger = Logger.getLogger(getClass().getName());
+    private static final Logger logger = LoggerFactory.getLogger(BinaryLogClient.class);
 
     private final String hostname;
     private final int port;
@@ -515,7 +514,8 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
      */
     public void connect() throws IOException, IllegalStateException {
         if (!connectLock.tryLock()) {
-            logger.warning("BinaryLogClient is already connected");
+            logger.warn("BinaryLogClient is already connected");
+            return;
         }
         boolean notifyWhenDisconnected = false;
         try {
@@ -563,10 +563,7 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
                     fetchBinlogFilenameAndPosition();
                 }
                 if (binlogPosition < 4) {
-                    if (logger.isLoggable(Level.WARNING)) {
-                        logger.warning(
-                                "Binary log position adjusted from " + binlogPosition + " to " + 4);
-                    }
+                    logger.warn("Binary log position adjusted from " + binlogPosition + " to " + 4);
                     binlogPosition = 4;
                 }
                 setupConnection();
@@ -581,38 +578,34 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
                     try {
                         cancelDisconnect.call();
                     } catch (Exception e) {
-                        if (logger.isLoggable(Level.WARNING)) {
-                            logger.warning(
-                                    "\""
-                                            + e.getMessage()
-                                            + "\" was thrown while canceling scheduled disconnect call");
-                        }
+                        logger.warn(
+                                "\""
+                                        + e.getMessage()
+                                        + "\" was thrown while canceling scheduled disconnect call");
                     }
                 }
             }
             connected = true;
             notifyWhenDisconnected = true;
-            if (logger.isLoggable(Level.INFO)) {
-                String position;
-                synchronized (gtidSetAccessLock) {
-                    position =
-                            gtidSet != null
-                                    ? gtidSet.toString()
-                                    : binlogFilename + "/" + binlogPosition;
-                }
-                logger.info(
-                        "Connected to "
-                                + hostname
-                                + ":"
-                                + port
-                                + " at "
-                                + position
-                                + " ("
-                                + (blocking ? "sid:" + serverId + ", " : "")
-                                + "cid:"
-                                + connectionId
-                                + ")");
+            String position;
+            synchronized (gtidSetAccessLock) {
+                position =
+                        gtidSet != null
+                                ? gtidSet.toString()
+                                : binlogFilename + "/" + binlogPosition;
             }
+            logger.info(
+                    "Connected to "
+                            + hostname
+                            + ":"
+                            + port
+                            + " at "
+                            + position
+                            + " ("
+                            + (blocking ? "sid:" + serverId + ", " : "")
+                            + "cid:"
+                            + connectionId
+                            + ")");
             for (LifecycleListener lifecycleListener : lifecycleListeners) {
                 lifecycleListener.onConnect(this);
             }
@@ -629,7 +622,7 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
             listenForEventPackets();
         } finally {
             connectLock.unlock();
-            if (notifyWhenDisconnected) {
+            if (notifyWhenDisconnected && !deserializeException.get()) {
                 for (LifecycleListener lifecycleListener : lifecycleListeners) {
                     lifecycleListener.onDisconnect(this);
                 }
@@ -666,25 +659,19 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
                                 try {
                                     connectLatch.await(timeout, TimeUnit.MILLISECONDS);
                                 } catch (InterruptedException e) {
-                                    if (logger.isLoggable(Level.WARNING)) {
-                                        logger.log(Level.WARNING, e.getMessage());
-                                    }
+                                    logger.warn(e.getMessage());
                                 }
                                 if (connectLatch.getCount() != 0) {
-                                    if (logger.isLoggable(Level.WARNING)) {
-                                        logger.warning(
-                                                "Failed to establish connection in "
-                                                        + timeout
-                                                        + "ms. "
-                                                        + "Forcing disconnect.");
-                                    }
-                                    try {
-                                        self.disconnectChannel();
-                                    } catch (IOException e) {
-                                        if (logger.isLoggable(Level.WARNING)) {
-                                            logger.log(Level.WARNING, e.getMessage());
-                                        }
-                                    }
+                                    logger.warn(
+                                            "Failed to establish connection in "
+                                                    + timeout
+                                                    + "ms. "
+                                                    + "Forcing disconnect.");
+                                }
+                                try {
+                                    self.disconnectChannel();
+                                } catch (IOException e) {
+                                    logger.warn(e.getMessage());
                                 }
                             }
                         },
@@ -843,27 +830,24 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
                                     }
                                 }
                                 if (connectionLost || deserializeException.get()) {
-                                    if (logger.isLoggable(Level.INFO)) {
-                                        logger.info(
-                                                "Trying to restore lost connection to "
-                                                        + hostname
-                                                        + ":"
-                                                        + port);
-                                    }
+                                    logger.info(
+                                            "Trying to restore lost connection to "
+                                                    + hostname
+                                                    + ":"
+                                                    + port);
                                     try {
                                         terminateConnect();
                                         connect(connectTimeout);
+                                        deserializeException.set(false);
                                     } catch (Exception ce) {
-                                        if (logger.isLoggable(Level.WARNING)) {
-                                            logger.warning(
-                                                    "Failed to restore connection to "
-                                                            + hostname
-                                                            + ":"
-                                                            + port
-                                                            + ". Next attempt in "
-                                                            + keepAliveInterval
-                                                            + "ms");
-                                        }
+                                        logger.warn(
+                                                "Failed to restore connection to "
+                                                        + hostname
+                                                        + ":"
+                                                        + port
+                                                        + ". Next attempt in "
+                                                        + keepAliveInterval
+                                                        + "ms");
                                     }
                                 }
                             }
@@ -938,9 +922,7 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
         try {
             started = countDownLatch.await(timeout, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
-            if (logger.isLoggable(Level.WARNING)) {
-                logger.log(Level.WARNING, e.getMessage());
-            }
+            logger.warn(e.getMessage());
         }
         unregisterLifecycleListener(connectListener);
         if (exceptionReference.get() != null) {
@@ -1050,11 +1032,12 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
                 }
             }
         } catch (Exception e) {
-            Throwable rootCause = ExceptionUtils.getRootCause(e);
-            if (rootCause instanceof EOFException) {
-                logger.log(Level.WARNING, e.getMessage());
+            if (e instanceof EventDataDeserializationException || e instanceof EOFException) {
+                logger.error("EOFException : ", e);
+                terminateConnect();
                 deserializeException.set(true);
             } else if (isConnected()) {
+                logger.error("exception : ", e);
                 for (LifecycleListener lifecycleListener : lifecycleListeners) {
                     lifecycleListener.onCommunicationFailure(this, e);
                 }
@@ -1211,9 +1194,7 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
             try {
                 eventListener.onEvent(event);
             } catch (Exception e) {
-                if (logger.isLoggable(Level.WARNING)) {
-                    logger.log(Level.WARNING, eventListener + " choked on " + event, e);
-                }
+                logger.warn(eventListener + " choked on " + event, e);
             }
         }
     }
@@ -1273,7 +1254,10 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
                 return;
             }
             keepAliveThreadExecutor.shutdownNow();
-            awaitTerminationInterruptibly(keepAliveThreadExecutor, 1000, TimeUnit.MILLISECONDS);
+            while (!awaitTerminationInterruptibly(
+                    keepAliveThreadExecutor, Long.MAX_VALUE, TimeUnit.NANOSECONDS)) {
+                // ignore
+            }
         } finally {
             keepAliveThreadExecutorLock.unlock();
         }
@@ -1308,10 +1292,6 @@ public class BinaryLogClient implements BinaryLogClientMXBean {
         if (channel != null && channel.isOpen()) {
             channel.close();
         }
-    }
-
-    public boolean isOpenChannel() {
-        return channel != null && channel.isOpen();
     }
 
     /** {@link BinaryLogClient}'s event listener. */
