@@ -54,7 +54,7 @@ import static com.ververica.cdc.connectors.mysql.source.utils.ObjectUtils.double
 import static com.ververica.cdc.connectors.mysql.source.utils.StatementUtils.queryApproximateRowCnt;
 import static com.ververica.cdc.connectors.mysql.source.utils.StatementUtils.queryMin;
 import static com.ververica.cdc.connectors.mysql.source.utils.StatementUtils.queryMinMax;
-import static com.ververica.cdc.connectors.mysql.source.utils.StatementUtils.queryNextChunkMax;
+import static com.ververica.cdc.connectors.mysql.source.utils.StatementUtils.queryNextChunkMaxAndCount;
 import static java.math.BigDecimal.ROUND_CEILING;
 
 /** The {@link ChunkSplitter} implementation for MySQL. */
@@ -150,6 +150,12 @@ public class MySqlChunkSplitter implements ChunkSplitter {
             splitType = ChunkUtils.getChunkKeyColumnType(splitColumn);
             minMaxOfSplitColumn = queryMinMax(jdbcConnection, tableId, splitColumn.name());
             approximateRowCnt = queryApproximateRowCnt(jdbcConnection, tableId);
+
+            LOG.info(
+                    "table {} , min : {} , max : {} ",
+                    tableId,
+                    minMaxOfSplitColumn[0],
+                    minMaxOfSplitColumn[1]);
         } catch (Exception e) {
             throw new RuntimeException("Fail to analyze table in chunk splitter.", e);
         }
@@ -179,7 +185,7 @@ public class MySqlChunkSplitter implements ChunkSplitter {
                         chunkSize);
         // may sleep a while to avoid DDOS on MySQL server
         maySleep(nextChunkId, tableId);
-        if (chunkEnd != null && ObjectUtils.compare(chunkEnd, minMaxOfSplitColumn[1]) <= 0) {
+        if (chunkEnd != null) {
             nextChunkStart = ChunkSplitterState.ChunkBound.middleOf(chunkEnd);
             return createSnapshotSplit(
                     jdbcConnection, tableId, nextChunkId++, splitType, chunkStartVal, chunkEnd);
@@ -309,14 +315,25 @@ public class MySqlChunkSplitter implements ChunkSplitter {
             int chunkSize)
             throws SQLException {
         // chunk end might be null when max values are removed
-        Object chunkEnd =
-                queryNextChunkMax(jdbc, tableId, splitColumnName, chunkSize, previousChunkEnd);
+        Object[] chunkEndAndCount =
+                queryNextChunkMaxAndCount(
+                        jdbc, tableId, splitColumnName, chunkSize, previousChunkEnd);
+        Object chunkEnd = chunkEndAndCount[0];
         if (Objects.equals(previousChunkEnd, chunkEnd)) {
             // we don't allow equal chunk start and end,
             // should query the next one larger than chunkEnd
             chunkEnd = queryMin(jdbc, tableId, splitColumnName, chunkEnd);
         }
-        if (ObjectUtils.compare(chunkEnd, max) >= 0) {
+
+        LOG.info(
+                "table {} chunkStart : {} chunkEnd : {} countChunkSize : {}",
+                tableId,
+                previousChunkEnd,
+                chunkEnd,
+                Integer.valueOf(chunkEndAndCount[1].toString()));
+
+        if (ObjectUtils.compare(chunkEnd, max) >= 0
+                && chunkSize > Integer.valueOf(chunkEndAndCount[1].toString())) {
             return null;
         } else {
             return chunkEnd;
