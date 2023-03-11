@@ -29,7 +29,7 @@ import java.util.Objects;
 /** The split to describe the change log of database table(s). */
 public class StreamSplit extends SourceSplitBase {
 
-    private final Offset startingOffset;
+    private Offset startingOffset;
     private final Offset endingOffset;
     private final List<FinishedSnapshotSplitInfo> finishedSnapshotSplitInfos;
     private final Map<TableId, TableChange> tableSchemas;
@@ -53,6 +53,10 @@ public class StreamSplit extends SourceSplitBase {
 
     public Offset getStartingOffset() {
         return startingOffset;
+    }
+
+    public void setStartingOffset(Offset startingOffset) {
+        this.startingOffset = startingOffset;
     }
 
     public Offset getEndingOffset() {

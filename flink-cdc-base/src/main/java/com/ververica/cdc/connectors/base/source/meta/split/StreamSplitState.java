@@ -45,6 +45,7 @@ public class StreamSplitState extends SourceSplitState {
 
     public void setStartingOffset(@Nullable Offset startingOffset) {
         this.startingOffset = startingOffset;
+        this.split.asStreamSplit().setStartingOffset(startingOffset);
     }
 
     @Nullable

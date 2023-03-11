@@ -58,12 +58,12 @@ public class IncrementalSourceEnumerator
     private static final Logger LOG = LoggerFactory.getLogger(IncrementalSourceEnumerator.class);
     private static final long CHECK_EVENT_INTERVAL = 30_000L;
 
-    private final SplitEnumeratorContext<SourceSplitBase> context;
+    protected final SplitEnumeratorContext<SourceSplitBase> context;
     private final SourceConfig sourceConfig;
     private final SplitAssigner splitAssigner;
 
     // using TreeSet to prefer assigning stream split to task-0 for easier debug
-    private final TreeSet<Integer> readersAwaitingSplit;
+    protected final TreeSet<Integer> readersAwaitingSplit;
     private List<List<FinishedSnapshotSplitInfo>> finishedSnapshotSplitMeta;
 
     public IncrementalSourceEnumerator(
@@ -151,7 +151,7 @@ public class IncrementalSourceEnumerator
 
     // ------------------------------------------------------------------------------------------
 
-    private void assignSplits() {
+    protected void assignSplits() {
         final Iterator<Integer> awaitingReader = readersAwaitingSplit.iterator();
 
         while (awaitingReader.hasNext()) {
@@ -176,13 +176,13 @@ public class IncrementalSourceEnumerator
         }
     }
 
-    private int[] getRegisteredReader() {
+    protected int[] getRegisteredReader() {
         return this.context.registeredReaders().keySet().stream()
                 .mapToInt(Integer::intValue)
                 .toArray();
     }
 
-    private void syncWithReaders(int[] subtaskIds, Throwable t) {
+    protected void syncWithReaders(int[] subtaskIds, Throwable t) {
         if (t != null) {
             throw new FlinkRuntimeException("Failed to list obtain registered readers due to:", t);
         }

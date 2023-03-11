@@ -25,6 +25,7 @@ under the License.
 
     <artifactId>flink-connector-debezium</artifactId>
     <name>flink-connector-debezium</name>
+    <version>2.4-sf-SNAPSHOT</version>
 
     <dependencies>
 

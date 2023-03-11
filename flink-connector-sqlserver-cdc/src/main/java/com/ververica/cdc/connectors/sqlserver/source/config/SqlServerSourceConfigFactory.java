@@ -68,6 +68,7 @@ public class SqlServerSourceConfigFactory extends JdbcSourceConfigFactory {
         props.setProperty("database.port", String.valueOf(port));
         props.setProperty("database.history.skip.unparseable.ddl", String.valueOf(true));
         props.setProperty("database.dbname", checkNotNull(databaseList.get(0)));
+        props.setProperty("include.schema.changes", String.valueOf(includeSchemaChanges));
 
         if (tableList != null) {
             props.setProperty("table.include.list", String.join(",", tableList));
@@ -110,6 +111,9 @@ public class SqlServerSourceConfigFactory extends JdbcSourceConfigFactory {
                 connectTimeout,
                 connectMaxRetries,
                 connectionPoolSize,
-                chunkKeyColumn);
+                chunkKeyColumn,
+                parallelReadEnabled,
+                getTableChangeUrl,
+                reportReachBinlogUrl);
     }
 }

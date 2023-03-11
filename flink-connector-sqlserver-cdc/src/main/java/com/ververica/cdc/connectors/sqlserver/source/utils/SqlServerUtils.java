@@ -195,7 +195,7 @@ public class SqlServerUtils {
     public static LsnOffset currentLsn(SqlServerConnection connection) {
         try {
             Lsn maxLsn = connection.getMaxLsn();
-            return new LsnOffset(maxLsn);
+            return new LsnOffset(maxLsn, maxLsn, null);
         } catch (SQLException e) {
             throw new FlinkRuntimeException(e.getMessage(), e);
         }

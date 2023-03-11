@@ -51,6 +51,9 @@ public interface DataSourceDialect<C extends SourceConfig> extends Serializable 
      */
     Map<TableId, TableChanges.TableChange> discoverDataCollectionSchemas(C sourceConfig);
 
+    /** 获取对应表的 table change. */
+    TableChanges.TableChange discoverTableSchemas(TableId tableId);
+
     /**
      * Displays current offset from the database e.g. query Mysql binary logs by query <code>
      * SHOW MASTER STATUS</code>.

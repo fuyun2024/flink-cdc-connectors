@@ -174,7 +174,8 @@ public class MongoDBFetchTaskContext implements FetchTask.Context {
     }
 
     @Override
-    public List<SourceRecord> formatMessageTimestamp(Collection<SourceRecord> snapshotRecords) {
+    public List<SourceRecord> formatMessageTimestamp(
+            Collection<SourceRecord> snapshotRecords, Offset streamOffset) {
         return snapshotRecords.stream()
                 .peek(
                         record -> {

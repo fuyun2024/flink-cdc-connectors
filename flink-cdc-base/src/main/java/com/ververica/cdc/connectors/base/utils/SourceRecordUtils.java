@@ -18,6 +18,7 @@ package com.ververica.cdc.connectors.base.utils;
 
 import org.apache.flink.table.types.logical.RowType;
 
+import com.ververica.cdc.connectors.sf.reader.StartRecord;
 import io.debezium.data.Envelope;
 import io.debezium.document.DocumentReader;
 import io.debezium.relational.TableId;
@@ -102,6 +103,12 @@ public class SourceRecordUtils {
         return valueSchema != null
                 && valueSchema.field(Envelope.FieldName.OPERATION) != null
                 && value.getString(Envelope.FieldName.OPERATION) != null;
+    }
+
+    public static boolean isStartEvent(SourceRecord sourceRecord) {
+        Schema keySchema = sourceRecord.keySchema();
+        return keySchema != null
+                && StartRecord.START_EVENT_KEY_SCHEMA_NAME.equalsIgnoreCase(keySchema.name());
     }
 
     public static TableId getTableId(SourceRecord dataRecord) {

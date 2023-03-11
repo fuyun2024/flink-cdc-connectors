@@ -163,7 +163,9 @@ public class IncrementalSourceScanFetcher implements Fetcher<SourceRecords, Sour
 
             final List<SourceRecord> normalizedRecords = new ArrayList<>();
             normalizedRecords.add(lowWatermark);
-            normalizedRecords.addAll(taskContext.formatMessageTimestamp(outputBuffer.values()));
+            normalizedRecords.addAll(
+                    taskContext.formatMessageTimestamp(
+                            outputBuffer.values(), taskContext.getStreamOffset(highWatermark)));
             normalizedRecords.add(highWatermark);
 
             final List<SourceRecords> sourceRecordsSet = new ArrayList<>();

@@ -127,6 +127,11 @@ public class MySqlDialect implements JdbcDataSourceDialect {
     }
 
     @Override
+    public TableChange discoverTableSchemas(TableId tableId) {
+        return null;
+    }
+
+    @Override
     public TableChange queryTableSchema(JdbcConnection jdbc, TableId tableId) {
         if (mySqlSchema == null) {
             mySqlSchema =

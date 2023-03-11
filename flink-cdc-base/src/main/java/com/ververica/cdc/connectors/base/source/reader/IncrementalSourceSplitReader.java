@@ -49,13 +49,13 @@ public class IncrementalSourceSplitReader<C extends SourceConfig>
         implements SplitReader<SourceRecords, SourceSplitBase> {
 
     private static final Logger LOG = LoggerFactory.getLogger(IncrementalSourceSplitReader.class);
-    private final Queue<SourceSplitBase> splits;
-    private final int subtaskId;
+    protected final Queue<SourceSplitBase> splits;
+    protected final int subtaskId;
 
-    @Nullable private Fetcher<SourceRecords, SourceSplitBase> currentFetcher;
-    @Nullable private String currentSplitId;
-    private final DataSourceDialect<C> dataSourceDialect;
-    private final C sourceConfig;
+    @Nullable protected Fetcher<SourceRecords, SourceSplitBase> currentFetcher;
+    @Nullable protected String currentSplitId;
+    protected final DataSourceDialect<C> dataSourceDialect;
+    protected final C sourceConfig;
 
     public IncrementalSourceSplitReader(
             int subtaskId, DataSourceDialect<C> dataSourceDialect, C sourceConfig) {
@@ -144,7 +144,7 @@ public class IncrementalSourceSplitReader<C extends SourceConfig>
         return currentFetcher == null || currentFetcher.isFinished();
     }
 
-    private ChangeEventRecords finishedSnapshotSplit() {
+    public ChangeEventRecords finishedSnapshotSplit() {
         final ChangeEventRecords finishedRecords =
                 ChangeEventRecords.forFinishedSplit(currentSplitId);
         currentSplitId = null;

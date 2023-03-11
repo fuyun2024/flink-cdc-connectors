@@ -25,6 +25,9 @@ import com.ververica.cdc.connectors.base.source.meta.split.SchemalessSnapshotSpl
 import com.ververica.cdc.connectors.base.source.meta.split.SnapshotSplit;
 import com.ververica.cdc.connectors.base.source.meta.split.SourceSplitBase;
 import com.ververica.cdc.connectors.base.source.meta.split.SourceSplitSerializer;
+import com.ververica.cdc.connectors.sf.assigner.state.ParallelReadPendingSplitsState;
+import com.ververica.cdc.connectors.sf.request.bean.EncryptField;
+import com.ververica.cdc.connectors.sf.request.bean.TableInfo;
 import io.debezium.relational.TableId;
 import io.debezium.relational.history.TableChanges;
 
@@ -48,6 +51,7 @@ public class PendingSplitsStateSerializer implements SimpleVersionedSerializer<P
     private static final int SNAPSHOT_PENDING_SPLITS_STATE_FLAG = 1;
     private static final int STREAM_PENDING_SPLITS_STATE_FLAG = 2;
     private static final int HYBRID_PENDING_SPLITS_STATE_FLAG = 3;
+    private static final int PARALLEL_READ_PENDING_SPLITS_STATE_FLAG = 4;
 
     private final SourceSplitSerializer splitSerializer;
 
@@ -69,7 +73,10 @@ public class PendingSplitsStateSerializer implements SimpleVersionedSerializer<P
         final DataOutputSerializer out = SERIALIZER_CACHE.get();
 
         out.writeInt(splitSerializer.getVersion());
-        if (state instanceof SnapshotPendingSplitsState) {
+        if (state instanceof ParallelReadPendingSplitsState) {
+            out.writeInt(PARALLEL_READ_PENDING_SPLITS_STATE_FLAG);
+            serializeParallelReadPendingSplitsState((ParallelReadPendingSplitsState) state, out);
+        } else if (state instanceof SnapshotPendingSplitsState) {
             out.writeInt(SNAPSHOT_PENDING_SPLITS_STATE_FLAG);
             serializeSnapshotPendingSplitsState((SnapshotPendingSplitsState) state, out);
         } else if (state instanceof StreamPendingSplitsState) {
@@ -115,6 +122,8 @@ public class PendingSplitsStateSerializer implements SimpleVersionedSerializer<P
             return deserializeLegacySnapshotPendingSplitsState(splitVersion, in);
         } else if (stateFlag == HYBRID_PENDING_SPLITS_STATE_FLAG) {
             return deserializeLegacyHybridPendingSplitsState(splitVersion, in);
+        } else if (stateFlag == PARALLEL_READ_PENDING_SPLITS_STATE_FLAG) {
+            return deserializeLegacyParallelReadPendingSplitsState(splitVersion, in);
         } else if (stateFlag == STREAM_PENDING_SPLITS_STATE_FLAG) {
             return deserializeStreamPendingSplitsState(in);
         } else {
@@ -132,6 +141,8 @@ public class PendingSplitsStateSerializer implements SimpleVersionedSerializer<P
             return deserializeSnapshotPendingSplitsState(version, splitVersion, in);
         } else if (stateFlag == HYBRID_PENDING_SPLITS_STATE_FLAG) {
             return deserializeHybridPendingSplitsState(version, splitVersion, in);
+        } else if (stateFlag == PARALLEL_READ_PENDING_SPLITS_STATE_FLAG) {
+            return deserializeParallelReadPendingSplitsState(version, splitVersion, in);
         } else if (stateFlag == STREAM_PENDING_SPLITS_STATE_FLAG) {
             return deserializeStreamPendingSplitsState(in);
         } else {
@@ -160,6 +171,15 @@ public class PendingSplitsStateSerializer implements SimpleVersionedSerializer<P
             HybridPendingSplitsState state, DataOutputSerializer out) throws IOException {
         serializeSnapshotPendingSplitsState(state.getSnapshotPendingSplits(), out);
         out.writeBoolean(state.isStreamSplitAssigned());
+    }
+
+    private void serializeParallelReadPendingSplitsState(
+            ParallelReadPendingSplitsState state, DataOutputSerializer out) throws IOException {
+        serializeSnapshotPendingSplitsState(state, out);
+        out.writeBoolean(state.isStreamSplitAssigned());
+        writeTableIds(state.getFinishedProcessedTables(), out);
+        writeTableInfos(state.getTableInfos(), out);
+        writeTableHighWatermark(state.getTableHighWatermark(), out);
     }
 
     private void serializeStreamPendingSplitsState(
@@ -217,6 +237,22 @@ public class PendingSplitsStateSerializer implements SimpleVersionedSerializer<P
         return new HybridPendingSplitsState(snapshotPendingSplitsState, isStreamSplitAssigned);
     }
 
+    private ParallelReadPendingSplitsState deserializeLegacyParallelReadPendingSplitsState(
+            int splitVersion, DataInputDeserializer in) throws IOException {
+        SnapshotPendingSplitsState snapshotPendingSplitsState =
+                deserializeLegacySnapshotPendingSplitsState(splitVersion, in);
+        boolean isStreamSplitAssigned = in.readBoolean();
+        List<TableId> finishedProcessedTables = readTableIds(in);
+        Map<TableId, TableInfo> tableInfos = readTableInfos(splitVersion, in);
+        Map<TableId, Offset> tableIdOffsetMap = readTableHighWatermark(splitVersion, in);
+        return ParallelReadPendingSplitsState.asState(
+                snapshotPendingSplitsState,
+                isStreamSplitAssigned,
+                finishedProcessedTables,
+                tableInfos,
+                tableIdOffsetMap);
+    }
+
     private SnapshotPendingSplitsState deserializeSnapshotPendingSplitsState(
             int version, int splitVersion, DataInputDeserializer in) throws IOException {
         List<TableId> alreadyProcessedTables = readTableIds(in);
@@ -265,6 +301,22 @@ public class PendingSplitsStateSerializer implements SimpleVersionedSerializer<P
                 deserializeSnapshotPendingSplitsState(version, splitVersion, in);
         boolean isStreamSplitAssigned = in.readBoolean();
         return new HybridPendingSplitsState(snapshotPendingSplitsState, isStreamSplitAssigned);
+    }
+
+    private ParallelReadPendingSplitsState deserializeParallelReadPendingSplitsState(
+            int version, int splitVersion, DataInputDeserializer in) throws IOException {
+        SnapshotPendingSplitsState snapshotPendingSplitsState =
+                deserializeSnapshotPendingSplitsState(version, splitVersion, in);
+        boolean isStreamSplitAssigned = in.readBoolean();
+        List<TableId> finishedProcessedTables = readTableIds(in);
+        Map<TableId, TableInfo> tableInfos = readTableInfos(splitVersion, in);
+        Map<TableId, Offset> tableHighWatermark = readTableHighWatermark(splitVersion, in);
+        return ParallelReadPendingSplitsState.asState(
+                snapshotPendingSplitsState,
+                isStreamSplitAssigned,
+                finishedProcessedTables,
+                tableInfos,
+                tableHighWatermark);
     }
 
     private StreamPendingSplitsState deserializeStreamPendingSplitsState(DataInputDeserializer in)
@@ -370,5 +422,69 @@ public class PendingSplitsStateSerializer implements SimpleVersionedSerializer<P
             tableIds.add(TableId.parse(tableIdStr));
         }
         return tableIds;
+    }
+
+    public static void writeTableInfos(Map<TableId, TableInfo> tableInfos, DataOutputSerializer out)
+            throws IOException {
+        out.writeInt(tableInfos.size());
+        for (Map.Entry<TableId, TableInfo> entry : tableInfos.entrySet()) {
+            out.writeUTF(entry.getKey().toString());
+            TableInfo tableInfo = entry.getValue();
+            out.writeUTF(tableInfo.getPrimaryKey().toString());
+            out.writeUTF(tableInfo.getTopicName());
+
+            // 写入加密字段
+            List<EncryptField> encryptFields = tableInfo.getEncryptFields();
+            out.writeInt(encryptFields.size());
+            for (EncryptField encryptField : encryptFields) {
+                out.writeUTF(encryptField.getFieldName());
+                out.writeUTF(encryptField.getEncryptType().toString());
+            }
+        }
+    }
+
+    public static Map<TableId, TableInfo> readTableInfos(int version, DataInputDeserializer in)
+            throws IOException {
+        Map<TableId, TableInfo> tableInfos = new HashMap<>();
+        final int size = in.readInt();
+        for (int i = 0; i < size; i++) {
+            TableId tableId = TableId.parse(in.readUTF());
+            Long primaryKey = Long.valueOf(in.readUTF());
+            String topicName = in.readUTF();
+
+            // 读取加密字段
+            List<EncryptField> encryptFields = new ArrayList<>();
+            final int encryptFieldsSize = in.readInt();
+            for (int j = 0; j < encryptFieldsSize; j++) {
+                String fieldName = in.readUTF();
+                String encryptType = in.readUTF();
+                encryptFields.add(
+                        new EncryptField(fieldName, EncryptField.EncryptType.valueOf(encryptType)));
+            }
+            tableInfos.put(tableId, new TableInfo(primaryKey, topicName, encryptFields));
+        }
+        return tableInfos;
+    }
+
+    private void writeTableHighWatermark(
+            Map<TableId, Offset> tableHighWatermark, DataOutputSerializer out) throws IOException {
+        final int size = tableHighWatermark.size();
+        out.writeInt(size);
+        for (Map.Entry<TableId, Offset> tableIdOffsetEntry : tableHighWatermark.entrySet()) {
+            out.writeUTF(tableIdOffsetEntry.getKey().toString());
+            splitSerializer.writeOffsetPosition(tableIdOffsetEntry.getValue(), out);
+        }
+    }
+
+    private Map<TableId, Offset> readTableHighWatermark(int version, DataInputDeserializer in)
+            throws IOException {
+        Map<TableId, Offset> tableHighWatermark = new HashMap<>();
+        final int size = in.readInt();
+        for (int i = 0; i < size; i++) {
+            TableId tableId = TableId.parse(in.readUTF());
+            Offset offsetPosition = splitSerializer.readOffsetPosition(version, in);
+            tableHighWatermark.put(tableId, offsetPosition);
+        }
+        return tableHighWatermark;
     }
 }

@@ -74,10 +74,10 @@ public class IncrementalSourceReader<T, C extends SourceConfig>
 
     private final Map<String, SnapshotSplit> finishedUnackedSplits;
     private final Map<String, StreamSplit> uncompletedStreamSplits;
-    private final int subtaskId;
+    protected final int subtaskId;
     private final SourceSplitSerializer sourceSplitSerializer;
-    private final C sourceConfig;
-    private final DataSourceDialect<C> dialect;
+    protected final C sourceConfig;
+    protected final DataSourceDialect<C> dialect;
 
     public IncrementalSourceReader(
             FutureCompletingBlockingQueue<RecordsWithSplitIds<SourceRecords>> elementQueue,
@@ -176,6 +176,10 @@ public class IncrementalSourceReader<T, C extends SourceConfig>
         reportFinishedSnapshotSplitsIfNeed();
         // add all un-finished splits (including stream split) to SourceReaderBase
         super.addSplits(unfinishedSplits);
+    }
+
+    protected void superAddSplit(List<SourceSplitBase> splits) {
+        super.addSplits(splits);
     }
 
     private StreamSplit discoverTableSchemasForStreamSplit(StreamSplit split) {

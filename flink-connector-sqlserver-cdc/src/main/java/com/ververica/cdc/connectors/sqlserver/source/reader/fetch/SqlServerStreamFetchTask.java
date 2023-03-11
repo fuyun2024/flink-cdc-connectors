@@ -52,6 +52,7 @@ public class SqlServerStreamFetchTask implements FetchTask<SourceSplitBase> {
     public void execute(Context context) throws Exception {
         SqlServerSourceFetchTaskContext sourceFetchContext =
                 (SqlServerSourceFetchTaskContext) context;
+        sourceFetchContext.getDispatcher().dispatchStartEvent();
         taskRunning = true;
         redoLogSplitReadTask =
                 new LsnSplitReadTask(
