@@ -55,6 +55,9 @@ public abstract class JdbcSourceConfigFactory implements Factory<JdbcSourceConfi
     protected int connectionPoolSize = JdbcSourceOptions.CONNECTION_POOL_SIZE.defaultValue();
     protected Properties dbzProperties;
     protected String chunkKeyColumn;
+    protected boolean parallelReadEnabled = false;
+    protected String getTableChangeUrl;
+    protected String reportReachBinlogUrl;
 
     /** Integer port number of the database server. */
     public JdbcSourceConfigFactory hostname(String hostname) {
@@ -192,6 +195,24 @@ public abstract class JdbcSourceConfigFactory implements Factory<JdbcSourceConfi
      */
     public JdbcSourceConfigFactory chunkKeyColumn(String chunkKeyColumn) {
         this.chunkKeyColumn = chunkKeyColumn;
+        return this;
+    }
+
+    /** 支持并行读写. */
+    public JdbcSourceConfigFactory parallelReadEnabled(boolean parallelReadEnabled) {
+        this.parallelReadEnabled = parallelReadEnabled;
+        return this;
+    }
+
+    /** 获取表变更的 url. */
+    public JdbcSourceConfigFactory getTableChangeUrl(String getTableChangeUrl) {
+        this.getTableChangeUrl = getTableChangeUrl;
+        return this;
+    }
+
+    /** 上报表完成的 url. */
+    public JdbcSourceConfigFactory reportReachBinlogUrl(String reportReachBinlogUrl) {
+        this.reportReachBinlogUrl = reportReachBinlogUrl;
         return this;
     }
 

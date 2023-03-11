@@ -31,6 +31,7 @@ import org.apache.flink.core.io.SimpleVersionedSerializer;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.util.FlinkRuntimeException;
 
+import com.ververica.cdc.connectors.base.config.JdbcSourceConfig;
 import com.ververica.cdc.connectors.base.config.SourceConfig;
 import com.ververica.cdc.connectors.base.dialect.DataSourceDialect;
 import com.ververica.cdc.connectors.base.options.StartupMode;
@@ -51,10 +52,18 @@ import com.ververica.cdc.connectors.base.source.metrics.SourceReaderMetrics;
 import com.ververica.cdc.connectors.base.source.reader.IncrementalSourceReader;
 import com.ververica.cdc.connectors.base.source.reader.IncrementalSourceRecordEmitter;
 import com.ververica.cdc.connectors.base.source.reader.IncrementalSourceSplitReader;
+import com.ververica.cdc.connectors.sf.assigner.ParallelReadSplitAssigner;
+import com.ververica.cdc.connectors.sf.assigner.state.ParallelReadPendingSplitsState;
+import com.ververica.cdc.connectors.sf.deserialization.HybridSourceRecordDeserialization;
+import com.ververica.cdc.connectors.sf.deserialization.TableStateAware;
+import com.ververica.cdc.connectors.sf.deserialization.TableStateAwareImpl;
+import com.ververica.cdc.connectors.sf.enumerator.ParallelReadEnumerator;
+import com.ververica.cdc.connectors.sf.reader.ParallelReadSourceReader;
 import com.ververica.cdc.debezium.DebeziumDeserializationSchema;
 import io.debezium.relational.TableId;
 
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -117,15 +126,36 @@ public class IncrementalSource<T, C extends SourceConfig>
                 () ->
                         new IncrementalSourceSplitReader<>(
                                 readerContext.getIndexOfSubtask(), dataSourceDialect, sourceConfig);
-        return new IncrementalSourceReader<>(
-                elementsQueue,
-                splitReaderSupplier,
-                createRecordEmitter(sourceConfig, sourceReaderMetrics),
-                readerContext.getConfiguration(),
-                readerContext,
-                sourceConfig,
-                sourceSplitSerializer,
-                dataSourceDialect);
+        if (((JdbcSourceConfig) sourceConfig).isParallelReadEnabled()) {
+            if (!(deserializationSchema instanceof HybridSourceRecordDeserialization)) {
+                throw new FlinkRuntimeException("并行读取必须使用 HybridSourceRecordDeserialization 序列化器.");
+            }
+            TableStateAware tableStateAware = new TableStateAwareImpl();
+            HybridSourceRecordDeserialization hybridDeserialization =
+                    ((HybridSourceRecordDeserialization) deserializationSchema);
+            hybridDeserialization.setTableStateAware(tableStateAware);
+            hybridDeserialization.setOffsetFactory(offsetFactory);
+            return new ParallelReadSourceReader(
+                    elementsQueue,
+                    splitReaderSupplier,
+                    createRecordEmitter(sourceConfig, sourceReaderMetrics),
+                    readerContext.getConfiguration(),
+                    readerContext,
+                    sourceConfig,
+                    sourceSplitSerializer,
+                    dataSourceDialect,
+                    tableStateAware);
+        } else {
+            return new IncrementalSourceReader<>(
+                    elementsQueue,
+                    splitReaderSupplier,
+                    createRecordEmitter(sourceConfig, sourceReaderMetrics),
+                    readerContext.getConfiguration(),
+                    readerContext,
+                    sourceConfig,
+                    sourceSplitSerializer,
+                    dataSourceDialect);
+        }
     }
 
     @Override
@@ -133,7 +163,24 @@ public class IncrementalSource<T, C extends SourceConfig>
             SplitEnumeratorContext<SourceSplitBase> enumContext) {
         C sourceConfig = configFactory.create(0);
         final SplitAssigner splitAssigner;
-        if (sourceConfig.getStartupOptions().startupMode == StartupMode.INITIAL) {
+        if (((JdbcSourceConfig) sourceConfig).isParallelReadEnabled()) {
+            try {
+                boolean isTableIdCaseSensitive =
+                        dataSourceDialect.isDataCollectionIdCaseSensitive(sourceConfig);
+                splitAssigner =
+                        new ParallelReadSplitAssigner<>(
+                                sourceConfig,
+                                enumContext.currentParallelism(),
+                                new ArrayList<>(),
+                                isTableIdCaseSensitive,
+                                dataSourceDialect,
+                                offsetFactory);
+            } catch (Exception e) {
+                throw new FlinkRuntimeException(
+                        "Failed to discover captured tables for enumerator", e);
+            }
+            return new ParallelReadEnumerator(enumContext, sourceConfig, splitAssigner);
+        } else if (sourceConfig.getStartupOptions().startupMode == StartupMode.INITIAL) {
             try {
                 final List<TableId> remainingTables =
                         dataSourceDialect.discoverDataCollections(sourceConfig);
@@ -172,6 +219,15 @@ public class IncrementalSource<T, C extends SourceConfig>
                             (HybridPendingSplitsState) checkpoint,
                             dataSourceDialect,
                             offsetFactory);
+        } else if (checkpoint instanceof ParallelReadPendingSplitsState) {
+            splitAssigner =
+                    new ParallelReadSplitAssigner<>(
+                            sourceConfig,
+                            enumContext.currentParallelism(),
+                            (ParallelReadPendingSplitsState) checkpoint,
+                            dataSourceDialect,
+                            offsetFactory);
+            return new ParallelReadEnumerator(enumContext, sourceConfig, splitAssigner);
         } else if (checkpoint instanceof StreamPendingSplitsState) {
             splitAssigner =
                     new StreamSplitAssigner(

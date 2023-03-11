@@ -114,10 +114,13 @@ public class SqlServerDialect implements JdbcDataSourceDialect {
         try (SqlServerConnection jdbc =
                 createSqlServerConnection(sourceConfig.getDbzConnectorConfig().getJdbcConfig())) {
             // fetch table schemas
+            String database = sourceConfig.getDatabaseList().get(0);
             Map<TableId, TableChange> tableSchemas = new HashMap<>();
             for (TableId tableId : capturedTableIds) {
-                TableChange tableSchema = queryTableSchema(jdbc, tableId);
-                tableSchemas.put(tableId, tableSchema);
+                if (tableId.catalog().equals(database)) {
+                    TableChange tableSchema = queryTableSchema(jdbc, tableId);
+                    tableSchemas.put(tableId, tableSchema);
+                }
             }
             return tableSchemas;
         } catch (Exception e) {

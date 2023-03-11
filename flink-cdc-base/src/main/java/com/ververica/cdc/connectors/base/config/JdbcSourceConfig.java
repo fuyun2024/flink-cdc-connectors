@@ -43,6 +43,9 @@ public abstract class JdbcSourceConfig extends BaseSourceConfig {
     protected final int connectMaxRetries;
     protected final int connectionPoolSize;
     protected final String chunkKeyColumn;
+    private final boolean parallelReadEnabled;
+    private final String getTableChangeUrl;
+    private final String reportReachBinlogUrl;
 
     public JdbcSourceConfig(
             StartupOptions startupOptions,
@@ -65,7 +68,10 @@ public abstract class JdbcSourceConfig extends BaseSourceConfig {
             Duration connectTimeout,
             int connectMaxRetries,
             int connectionPoolSize,
-            String chunkKeyColumn) {
+            String chunkKeyColumn,
+            boolean parallelReadEnabled,
+            String getTableChangeUrl,
+            String reportReachBinlogUrl) {
         super(
                 startupOptions,
                 splitSize,
@@ -88,6 +94,9 @@ public abstract class JdbcSourceConfig extends BaseSourceConfig {
         this.connectMaxRetries = connectMaxRetries;
         this.connectionPoolSize = connectionPoolSize;
         this.chunkKeyColumn = chunkKeyColumn;
+        this.parallelReadEnabled = parallelReadEnabled;
+        this.getTableChangeUrl = getTableChangeUrl;
+        this.reportReachBinlogUrl = reportReachBinlogUrl;
     }
 
     public abstract RelationalDatabaseConnectorConfig getDbzConnectorConfig();
@@ -142,5 +151,17 @@ public abstract class JdbcSourceConfig extends BaseSourceConfig {
 
     public String getChunkKeyColumn() {
         return chunkKeyColumn;
+    }
+
+    public boolean isParallelReadEnabled() {
+        return parallelReadEnabled;
+    }
+
+    public String getGetTableChangeUrl() {
+        return getTableChangeUrl;
+    }
+
+    public String getReportReachBinlogUrl() {
+        return reportReachBinlogUrl;
     }
 }

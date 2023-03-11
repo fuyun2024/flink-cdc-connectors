@@ -53,7 +53,10 @@ public class SqlServerSourceConfig extends JdbcSourceConfig {
             Duration connectTimeout,
             int connectMaxRetries,
             int connectionPoolSize,
-            String chunkKeyColumn) {
+            String chunkKeyColumn,
+            boolean parallelReadEnabled,
+            String getTableChangeUrl,
+            String reportReachBinlogUrl) {
         super(
                 startupOptions,
                 databaseList,
@@ -75,7 +78,10 @@ public class SqlServerSourceConfig extends JdbcSourceConfig {
                 connectTimeout,
                 connectMaxRetries,
                 connectionPoolSize,
-                chunkKeyColumn);
+                chunkKeyColumn,
+                parallelReadEnabled,
+                getTableChangeUrl,
+                reportReachBinlogUrl);
     }
 
     @Override

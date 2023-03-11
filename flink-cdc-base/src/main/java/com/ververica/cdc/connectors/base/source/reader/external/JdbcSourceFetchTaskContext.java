@@ -22,8 +22,10 @@ import com.ververica.cdc.connectors.base.config.JdbcSourceConfig;
 import com.ververica.cdc.connectors.base.config.SourceConfig;
 import com.ververica.cdc.connectors.base.dialect.JdbcDataSourceDialect;
 import com.ververica.cdc.connectors.base.relational.JdbcSourceEventDispatcher;
+import com.ververica.cdc.connectors.base.source.meta.offset.Offset;
 import com.ververica.cdc.connectors.base.utils.SourceRecordUtils;
 import io.debezium.config.CommonConnectorConfig;
+import io.debezium.connector.AbstractSourceInfo;
 import io.debezium.data.Envelope;
 import io.debezium.pipeline.ErrorHandler;
 import io.debezium.pipeline.spi.OffsetContext;
@@ -47,6 +49,7 @@ public abstract class JdbcSourceFetchTaskContext implements FetchTask.Context {
     protected final JdbcDataSourceDialect dataSourceDialect;
     protected final CommonConnectorConfig dbzConnectorConfig;
     protected final SchemaNameAdjuster schemaNameAdjuster;
+    protected final String ipPort;
 
     public JdbcSourceFetchTaskContext(
             JdbcSourceConfig sourceConfig, JdbcDataSourceDialect dataSourceDialect) {
@@ -54,6 +57,7 @@ public abstract class JdbcSourceFetchTaskContext implements FetchTask.Context {
         this.dataSourceDialect = dataSourceDialect;
         this.dbzConnectorConfig = sourceConfig.getDbzConnectorConfig();
         this.schemaNameAdjuster = SchemaNameAdjuster.create();
+        this.ipPort = sourceConfig.getHostname() + "_" + sourceConfig.getPort();
     }
 
     @Override
@@ -115,7 +119,8 @@ public abstract class JdbcSourceFetchTaskContext implements FetchTask.Context {
     }
 
     @Override
-    public List<SourceRecord> formatMessageTimestamp(Collection<SourceRecord> snapshotRecords) {
+    public List<SourceRecord> formatMessageTimestamp(
+            Collection<SourceRecord> snapshotRecords, Offset streamOffset) {
         return snapshotRecords.stream()
                 .map(
                         record -> {
@@ -125,6 +130,11 @@ public abstract class JdbcSourceFetchTaskContext implements FetchTask.Context {
                             // set message timestamp (source.ts_ms) to 0L
                             Struct source = value.getStruct(Envelope.FieldName.SOURCE);
                             source.put(Envelope.FieldName.TIMESTAMP, 0L);
+                            source.put(AbstractSourceInfo.IP_PORT, ipPort);
+
+                            // 添加高水位的 offset
+                            streamOffset.getOffset().forEach(source::put);
+
                             // extend the fetch timestamp(ts_ms)
                             Instant fetchTs =
                                     Instant.ofEpochMilli(

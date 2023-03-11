@@ -187,6 +187,21 @@ public class SqlServerSourceBuilder<T> {
         return this;
     }
 
+    public SqlServerSourceBuilder<T> parallelReadEnabled(boolean parallelReadEnabled) {
+        this.configFactory.parallelReadEnabled(parallelReadEnabled);
+        return this;
+    }
+
+    public SqlServerSourceBuilder<T> getTableChangeUrl(String getTableChangeUrl) {
+        this.configFactory.getTableChangeUrl(getTableChangeUrl);
+        return this;
+    }
+
+    public SqlServerSourceBuilder<T> reportReachBinlogUrl(String reportReachBinlogUrl) {
+        this.configFactory.reportReachBinlogUrl(reportReachBinlogUrl);
+        return this;
+    }
+
     /**
      * The deserializer used to convert from consumed {@link
      * org.apache.kafka.connect.source.SourceRecord}.

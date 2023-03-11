@@ -20,6 +20,7 @@ import com.ververica.cdc.connectors.base.source.meta.offset.Offset;
 import com.ververica.cdc.connectors.base.source.meta.split.SourceSplitBase;
 import com.ververica.cdc.connectors.base.source.meta.wartermark.WatermarkEvent;
 import com.ververica.cdc.connectors.base.source.meta.wartermark.WatermarkKind;
+import com.ververica.cdc.connectors.sf.reader.StartRecord;
 import io.debezium.config.CommonConnectorConfig;
 import io.debezium.connector.base.ChangeEventQueue;
 import io.debezium.document.DocumentWriter;
@@ -242,5 +243,10 @@ public class JdbcSourceEventDispatcher extends EventDispatcher<TableId> {
                 WatermarkEvent.create(
                         sourcePartition, topic, sourceSplit.splitId(), watermarkKind, watermark);
         queue.enqueue(new DataChangeEvent(sourceRecord));
+    }
+
+    public void dispatchStartEvent() throws InterruptedException {
+        SourceRecord startRecord = StartRecord.buildStartRecord();
+        queue.enqueue(new DataChangeEvent(startRecord));
     }
 }

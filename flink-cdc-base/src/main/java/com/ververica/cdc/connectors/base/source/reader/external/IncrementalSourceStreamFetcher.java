@@ -25,9 +25,13 @@ import com.ververica.cdc.connectors.base.source.meta.split.FinishedSnapshotSplit
 import com.ververica.cdc.connectors.base.source.meta.split.SourceRecords;
 import com.ververica.cdc.connectors.base.source.meta.split.SourceSplitBase;
 import com.ververica.cdc.connectors.base.source.meta.split.StreamSplit;
+import com.ververica.cdc.connectors.base.utils.SourceRecordUtils;
+import io.debezium.connector.AbstractSourceInfo;
 import io.debezium.connector.base.ChangeEventQueue;
+import io.debezium.data.Envelope;
 import io.debezium.pipeline.DataChangeEvent;
 import io.debezium.relational.TableId;
+import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -109,13 +113,24 @@ public class IncrementalSourceStreamFetcher implements Fetcher<SourceRecords, So
             List<DataChangeEvent> batch = queue.poll();
             for (DataChangeEvent event : batch) {
                 if (shouldEmit(event.getRecord())) {
-                    sourceRecords.add(event.getRecord());
+                    sourceRecords.add(addIpPort(event.getRecord()));
                 }
             }
         }
         List<SourceRecords> sourceRecordsSet = new ArrayList<>();
         sourceRecordsSet.add(new SourceRecords(sourceRecords));
         return sourceRecordsSet.iterator();
+    }
+
+    SourceRecord addIpPort(SourceRecord record) {
+        if (SourceRecordUtils.isDataChangeRecord(record)) {
+            JdbcSourceFetchTaskContext jdbcSourceConfig =
+                    ((JdbcSourceFetchTaskContext) taskContext);
+            Struct value = (Struct) record.value();
+            Struct source = value.getStruct(Envelope.FieldName.SOURCE);
+            source.put(AbstractSourceInfo.IP_PORT, jdbcSourceConfig.ipPort);
+        }
+        return record;
     }
 
     private void checkReadException() {

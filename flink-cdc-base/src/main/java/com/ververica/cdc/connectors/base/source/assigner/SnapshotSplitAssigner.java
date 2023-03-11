@@ -50,24 +50,24 @@ import java.util.stream.Collectors;
 public class SnapshotSplitAssigner<C extends SourceConfig> implements SplitAssigner {
     private static final Logger LOG = LoggerFactory.getLogger(SnapshotSplitAssigner.class);
 
-    private final List<TableId> alreadyProcessedTables;
-    private final List<SchemalessSnapshotSplit> remainingSplits;
-    private final Map<String, SchemalessSnapshotSplit> assignedSplits;
+    protected final List<TableId> alreadyProcessedTables;
+    protected final List<SchemalessSnapshotSplit> remainingSplits;
+    public final Map<String, SchemalessSnapshotSplit> assignedSplits;
     private final Map<TableId, TableChanges.TableChange> tableSchemas;
-    private final Map<String, Offset> splitFinishedOffsets;
+    protected final Map<String, Offset> splitFinishedOffsets;
     private boolean assignerFinished;
 
-    private final C sourceConfig;
+    protected final C sourceConfig;
     private final int currentParallelism;
-    private final LinkedList<TableId> remainingTables;
+    protected final LinkedList<TableId> remainingTables;
     private final boolean isRemainingTablesCheckpointed;
 
-    private ChunkSplitter chunkSplitter;
-    private boolean isTableIdCaseSensitive;
+    protected ChunkSplitter chunkSplitter;
+    protected boolean isTableIdCaseSensitive;
 
     @Nullable private Long checkpointIdToFinish;
-    private final DataSourceDialect<C> dialect;
-    private final OffsetFactory offsetFactory;
+    protected final DataSourceDialect<C> dialect;
+    protected final OffsetFactory offsetFactory;
 
     public SnapshotSplitAssigner(
             C sourceConfig,

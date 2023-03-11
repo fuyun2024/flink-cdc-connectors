@@ -20,6 +20,7 @@ import org.apache.flink.api.connector.source.SourceOutput;
 import org.apache.flink.connector.base.source.reader.RecordEmitter;
 import org.apache.flink.util.Collector;
 
+import com.google.gson.Gson;
 import com.ververica.cdc.connectors.base.source.meta.offset.Offset;
 import com.ververica.cdc.connectors.base.source.meta.offset.OffsetFactory;
 import com.ververica.cdc.connectors.base.source.meta.split.SourceRecords;
@@ -45,6 +46,7 @@ import static com.ververica.cdc.connectors.base.utils.SourceRecordUtils.getHisto
 import static com.ververica.cdc.connectors.base.utils.SourceRecordUtils.getMessageTimestamp;
 import static com.ververica.cdc.connectors.base.utils.SourceRecordUtils.isDataChangeRecord;
 import static com.ververica.cdc.connectors.base.utils.SourceRecordUtils.isSchemaChangeEvent;
+import static com.ververica.cdc.connectors.base.utils.SourceRecordUtils.isStartEvent;
 
 /**
  * The {@link RecordEmitter} implementation for {@link IncrementalSourceReader}.
@@ -64,6 +66,7 @@ public class IncrementalSourceRecordEmitter<T>
     protected final boolean includeSchemaChanges;
     protected final OutputCollector<T> outputCollector;
     protected final OffsetFactory offsetFactory;
+    private Long startTime = 0L;
 
     public IncrementalSourceRecordEmitter(
             DebeziumDeserializationSchema<T> debeziumDeserializationSchema,
@@ -113,9 +116,16 @@ public class IncrementalSourceRecordEmitter<T>
             }
             reportMetrics(element);
             emitElement(element, output);
+        } else if (isStartEvent(element)) {
+            outputCollector.output = output;
+            LOG.info("开始事件 {}.", new Gson().toJson(element));
         } else {
             // unknown element
-            LOG.info("Meet unknown element {}, just skip.", element);
+            if (System.currentTimeMillis() - startTime > 60000) {
+                // 最大为每一分钟打印一次
+                startTime = System.currentTimeMillis();
+                LOG.info("Meet unknown element {}, just skip.", new Gson().toJson(element));
+            }
         }
     }
 
@@ -158,7 +168,8 @@ public class IncrementalSourceRecordEmitter<T>
         }
     }
 
-    private static class OutputCollector<T> implements Collector<T> {
+    /** * OutputCollector. */
+    public static class OutputCollector<T> implements Collector<T> {
         private SourceOutput<T> output;
 
         @Override
@@ -170,5 +181,9 @@ public class IncrementalSourceRecordEmitter<T>
         public void close() {
             // do nothing
         }
+    }
+
+    public OutputCollector<T> getOutputCollector() {
+        return outputCollector;
     }
 }
