@@ -163,6 +163,7 @@ public class SqlServerSourceFetchTaskContext extends JdbcSourceFetchTaskContext 
                         : sourceSplitBase.asStreamSplit().getStartingOffset();
 
         SqlServerOffsetContext sqlServerOffsetContext = loader.load(offset.getOffset());
+        sqlServerOffsetContext.preSnapshotCompletion();
         return sqlServerOffsetContext;
     }
 
