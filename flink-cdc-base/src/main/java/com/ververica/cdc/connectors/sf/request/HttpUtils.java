@@ -46,7 +46,7 @@ public class HttpUtils {
     /** 请求获取新增表. */
     public static List<TableChangeBean> requestTableChangeTable(String url) {
         try {
-            HttpResponse httpResponse = HttpUtil.createGet(url).execute();
+            HttpResponse httpResponse = HttpUtil.createGet(url).timeout(1000 * 60).execute();
             String body = httpResponse.body();
             if (!httpResponse.isOk() || StringUtils.isEmpty(body)) {
                 LOG.warn("请求后台直通车获取数据失败, requestHttpUrl : " + url);
