@@ -277,7 +277,7 @@ public class ParallelReadEnumerator extends IncrementalSourceEnumerator {
         }
     }
 
-    /** 后续如果发现表已经处理了，但是平台的状态又还是 INITIAL 中 */
+    /** 后续如果发现表已经处理了，但是平台的状态又还是 INITIAL 中. */
     private void callBackTableChangeIfNeed(TableChangeBean bean) {
         TableId tableId = bean.getTableId();
         if (AccessTableStatus.INITIAL.equals(bean.getStatus())
@@ -289,12 +289,12 @@ public class ParallelReadEnumerator extends IncrementalSourceEnumerator {
         }
     }
 
-    /** 添加到回调列表中 */
+    /** 添加到回调列表中. */
     private void addCallbackBean(CallBackTableChangeBean bean) {
         callBackTableChangeBeans.add(bean);
     }
 
-    /** 回调事件给后台直通车。 */
+    /** 回调事件给后台直通车. */
     private void callbackTableChangeBeans() {
         // 回调直通车表变更完成.
         if (dynamicTableChange != null) {
