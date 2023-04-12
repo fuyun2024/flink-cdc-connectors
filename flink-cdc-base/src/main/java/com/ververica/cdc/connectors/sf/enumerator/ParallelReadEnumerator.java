@@ -19,7 +19,6 @@ import com.ververica.cdc.connectors.sf.events.FinishedSnapshotTableReportEvent;
 import com.ververica.cdc.connectors.sf.events.FinishedSnapshotTableRequestEvent;
 import com.ververica.cdc.connectors.sf.events.TableChangeAckEvent;
 import com.ververica.cdc.connectors.sf.events.TableChangeRequestEvent;
-import com.ververica.cdc.connectors.sf.events.TableChangeTypeEnum;
 import com.ververica.cdc.connectors.sf.request.bean.AccessTableStatus;
 import com.ververica.cdc.connectors.sf.request.bean.CallBackTableChangeBean;
 import com.ververica.cdc.connectors.sf.request.bean.TableChangeBean;
@@ -84,16 +83,18 @@ public class ParallelReadEnumerator extends IncrementalSourceEnumerator {
 
     /** 处理捕获到表变更的逻辑. */
     private void handleTableChangeCapture(List<TableChangeBean> tableChangeBeans) {
-        callbackAllFinishedTableForFirst(tableChangeBeans);
+        firstCallbackAllFinishedTable(tableChangeBeans);
 
         for (TableChangeBean bean : tableChangeBeans) {
             TableId tableId = bean.getTableId();
-            if (isProcessedTable(tableId, bean.getStatus())) {
+            if (isProcessedTable(bean)) {
                 LOG.debug("已经处理过 table : {}", tableId);
+                callBackTableChangeIfNeed(bean);
                 continue;
             }
 
             TableChangeRequestEvent requestEvent;
+            // 平台那边有可能已经是 RUNNING ，但是还需要处理，出现这种情况就是任务从老的状态中重启，因此也需要处理这种问题。
             if (bean.isAddedTable() && bean.isSnapshotSync()) {
                 LOG.info("捕获到一张表 table : {} 需要进行全、增量数据同步。(注意:本次调用有可能是重复的,但是不影响数据采集)", tableId);
                 requestEvent = TableChangeRequestEvent.asCreateSnapshotTable(tableId);
@@ -110,6 +111,7 @@ public class ParallelReadEnumerator extends IncrementalSourceEnumerator {
             requestEvent.setTableInfo(
                     new TableInfo(bean.getId(), bean.getTopicName(), bean.getEncryptFields()));
             for (int subTaskId : getRegisteredReader()) {
+                // 给所有任务发送消息
                 context.sendEventToSourceReader(subTaskId, requestEvent);
             }
         }
@@ -118,7 +120,7 @@ public class ParallelReadEnumerator extends IncrementalSourceEnumerator {
     /** 处理表变更处理完成后的 ACK. */
     private void handleTableChangeAckEvent(TableChangeAckEvent ackEvent) {
         TableId tableId = ackEvent.getTableId();
-        if (isProcessedTable(tableId, ackEvent.getTableChangeType())) {
+        if (isProcessedTable((ackEvent))) {
             LOG.debug("已经处理过 table : {}", tableId);
             return;
         }
@@ -135,7 +137,7 @@ public class ParallelReadEnumerator extends IncrementalSourceEnumerator {
                 {
                     LOG.info("table : {} 已经进行 stream 读取.", tableId);
                     splitAssigner.addFinishedProcessedTable(tableId, tableInfo);
-                    callBackTableChangeBeans.add(
+                    addCallbackBean(
                             CallBackTableChangeBean.asCreateTable(
                                     tableInfo.getPrimaryKey(), tableId));
                     break;
@@ -144,7 +146,7 @@ public class ParallelReadEnumerator extends IncrementalSourceEnumerator {
                 {
                     LOG.info("table : {} 删除表完成.", tableId);
                     splitAssigner.deleteFinishedProcessedStreamTable(tableId);
-                    callBackTableChangeBeans.add(
+                    addCallbackBean(
                             CallBackTableChangeBean.asDeleteTable(
                                     tableInfo.getPrimaryKey(), tableId));
                     break;
@@ -168,87 +170,10 @@ public class ParallelReadEnumerator extends IncrementalSourceEnumerator {
                 LOG.info("table : {} 全量读取完成,并且已经进行到 stream 采集阶段.", tableId);
                 Map<TableId, TableInfo> tableInfos = splitAssigner.getTableInfos();
                 Long primaryKey = tableInfos.get(tableId).getPrimaryKey();
-                callBackTableChangeBeans.add(
-                        CallBackTableChangeBean.asCreateTable(primaryKey, tableId));
+                addCallbackBean(CallBackTableChangeBean.asCreateTable(primaryKey, tableId));
             }
         } else {
             super.handleSourceEvent(subtaskId, sourceEvent);
-        }
-    }
-
-    /** 第一次启动的时候，需要回调所有已完成的表(不包括要删除的表). */
-    private void callbackAllFinishedTableForFirst(List<TableChangeBean> tableChangeBeans) {
-        if (callbackFirst) {
-            for (TableChangeBean bean : tableChangeBeans) {
-                TableId tableId = bean.getTableId();
-                if (splitAssigner.isFinishedProcessedTable(tableId) && bean.isAddedTable()) {
-                    // 新增表，已经在处理中，需要回调
-                    callBackTableChangeBeans.add(
-                            CallBackTableChangeBean.asCreateTable(bean.getId(), tableId));
-                } else if (!splitAssigner.isFinishedProcessedTable(tableId)
-                        && bean.isDeleteTable()) {
-                    // 需要删除，并且不再已完成的表中，说明已经被删除过了。也需要回调
-                    callBackTableChangeBeans.add(
-                            CallBackTableChangeBean.asCreateTable(bean.getId(), tableId));
-                }
-            }
-            callbackTableChangeBeans();
-        }
-
-        // 第一次汇报完成之后就不需要再汇报了
-        callbackFirst = false;
-    }
-
-    private void callbackTableChangeBeans() {
-        // 回调直通车表变更完成.
-        if (dynamicTableChange != null) {
-            dynamicTableChange.tableChangeCallback(callBackTableChangeBeans);
-        }
-    }
-
-    /** 处理所有表状态请求事件. */
-    private void handleAllTableStateRequestEvent(int subtaskId) {
-        context.sendEventToSourceReader(
-                subtaskId,
-                new AllTableStateAckEvent(
-                        splitAssigner.getTableInfos(), splitAssigner.getBinlogStateTables()));
-    }
-
-    /** 获取已经全量快照完成的列表. */
-    private void getFinishedSnapshotTable(FinishedSnapshotTableRequestEvent event) {
-        List finishedSnapshotTables =
-                splitAssigner.isFinishedSnapshotTables(
-                        event.getUnFinishedTableIds(), event.getProcessOffset());
-        if (finishedSnapshotTables != null && finishedSnapshotTables.size() > 0) {
-            context.sendEventToSourceReader(
-                    streamSubtaskId,
-                    new FinishedSnapshotTableReportEvent(event.getUnFinishedTableIds()));
-        }
-    }
-
-    /** 判断表是否已经处理过了. */
-    private boolean isProcessedTable(TableId tableId, TableChangeTypeEnum typeEnum) {
-        if (typeEnum.isAddedTable() && splitAssigner.isAddedTable(tableId)) {
-            // 是新增表, 并且已经处理过的表，才需要过滤
-            return true;
-        } else if (typeEnum.isDeletedTable() && !splitAssigner.isAddedTable(tableId)) {
-            // 是一张删除表，并且已经不再已完成的列表中，说明已经处理过了，需要过滤
-            return true;
-        } else {
-            return false;
-        }
-    }
-
-    /** 判断表是否已经处理过了. */
-    private boolean isProcessedTable(TableId tableId, AccessTableStatus status) {
-        if (status.isAddedTable() && splitAssigner.isAddedTable(tableId)) {
-            // 是新增表, 并且已经处理过的表，才需要过滤
-            return true;
-        } else if (status.isDeletedTable() && !splitAssigner.isAddedTable(tableId)) {
-            // 是一张删除表，并且已经不再已完成的列表中，说明已经处理过了，需要过滤
-            return true;
-        } else {
-            return false;
         }
     }
 
@@ -300,5 +225,100 @@ public class ParallelReadEnumerator extends IncrementalSourceEnumerator {
     public void close() {
         super.close();
         tableChangeContext.close();
+    }
+
+    // ================================    utils   ======================================
+
+    /** 第一次启动的时候，需要回调所有已完成的表(不包括要删除的表). */
+    private void firstCallbackAllFinishedTable(List<TableChangeBean> tableChangeBeans) {
+        if (callbackFirst) {
+            for (TableChangeBean bean : tableChangeBeans) {
+                TableId tableId = bean.getTableId();
+                if (splitAssigner.isFinishedProcessedTable(tableId) && bean.isAddedTable()) {
+                    // 新增表，已经在处理中，需要回调
+                    addCallbackBean(CallBackTableChangeBean.asCreateTable(bean.getId(), tableId));
+                } else if (!splitAssigner.isFinishedProcessedTable(tableId)
+                        && bean.isDeleteTable()) {
+                    // 需要删除，并且不再已完成的表中，说明已经被删除过了。也需要回调
+                    addCallbackBean(CallBackTableChangeBean.asCreateTable(bean.getId(), tableId));
+                }
+            }
+            callbackTableChangeBeans();
+        }
+
+        // 第一次汇报完成之后就不需要再汇报了
+        callbackFirst = false;
+    }
+
+    /** 判断表是否已经处理过了. */
+    private boolean isProcessedTable(TableChangeBean bean) {
+        TableId tableId = bean.getTableId();
+        if (bean.isAddedTable() && splitAssigner.isProcessedTable(tableId)) {
+            // 是新增表, 并且已经处理过的表，才需要过滤
+            return true;
+        } else if (bean.isDeleteTable() && !splitAssigner.isProcessedTable(tableId)) {
+            // 是一张删除表，并且已经不再已完成的列表中，说明已经处理过了，需要过滤
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    private boolean isProcessedTable(TableChangeAckEvent ackEvent) {
+        TableId tableId = ackEvent.getTableId();
+        if (ackEvent.isAddedTable() && splitAssigner.isProcessedTable(tableId)) {
+            // 是新增表, 并且已经处理过的表, 不处理
+            return true;
+        } else if (ackEvent.isDeletedTable() && !splitAssigner.isProcessedTable(tableId)) {
+            // 是一张删除表，并且已经不再已完成的列表中，说明已经处理过了，需要过滤
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    /** 后续如果发现表已经处理了，但是平台的状态又还是 INITIAL 中 */
+    private void callBackTableChangeIfNeed(TableChangeBean bean) {
+        TableId tableId = bean.getTableId();
+        if (AccessTableStatus.INITIAL.equals(bean.getStatus())
+                && splitAssigner.isFinishedProcessedTable(tableId)) {
+            addCallbackBean(CallBackTableChangeBean.asCreateTable(bean.getId(), tableId));
+        } else if (AccessTableStatus.STOPING.equals(bean.getStatus())
+                && !splitAssigner.isFinishedProcessedTable(tableId)) {
+            addCallbackBean(CallBackTableChangeBean.asCreateTable(bean.getId(), tableId));
+        }
+    }
+
+    /** 添加到回调列表中 */
+    private void addCallbackBean(CallBackTableChangeBean bean) {
+        callBackTableChangeBeans.add(bean);
+    }
+
+    /** 回调事件给后台直通车。 */
+    private void callbackTableChangeBeans() {
+        // 回调直通车表变更完成.
+        if (dynamicTableChange != null) {
+            dynamicTableChange.tableChangeCallback(callBackTableChangeBeans);
+        }
+    }
+
+    /** 处理所有表状态请求事件. */
+    private void handleAllTableStateRequestEvent(int subtaskId) {
+        context.sendEventToSourceReader(
+                subtaskId,
+                new AllTableStateAckEvent(
+                        splitAssigner.getTableInfos(), splitAssigner.getNeedBinlogStateTables()));
+    }
+
+    /** 获取已经全量快照完成的列表. */
+    private void getFinishedSnapshotTable(FinishedSnapshotTableRequestEvent event) {
+        List finishedSnapshotTables =
+                splitAssigner.isFinishedSnapshotTables(
+                        event.getUnFinishedTableIds(), event.getProcessOffset());
+        if (finishedSnapshotTables != null && finishedSnapshotTables.size() > 0) {
+            context.sendEventToSourceReader(
+                    streamSubtaskId,
+                    new FinishedSnapshotTableReportEvent(event.getUnFinishedTableIds()));
+        }
     }
 }

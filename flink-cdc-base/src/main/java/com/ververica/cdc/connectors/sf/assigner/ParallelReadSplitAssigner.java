@@ -136,7 +136,7 @@ public class ParallelReadSplitAssigner<C extends SourceConfig> extends SnapshotS
         return tableInfos;
     }
 
-    public List<TableId> getBinlogStateTables() {
+    public List<TableId> getNeedBinlogStateTables() {
         List<TableId> binlogStateTables = new ArrayList<>(tableInfos.keySet());
         binlogStateTables.removeAll(finishedProcessedTables);
         return binlogStateTables;
@@ -167,7 +167,7 @@ public class ParallelReadSplitAssigner<C extends SourceConfig> extends SnapshotS
     }
 
     /** 判断表是否已经新增. */
-    public boolean isAddedTable(TableId tableId) {
+    public boolean isProcessedTable(TableId tableId) {
         return tableInfos.get(tableId) != null;
     }
 
