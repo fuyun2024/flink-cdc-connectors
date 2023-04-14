@@ -67,6 +67,7 @@ public class IncrementalSourceStreamFetcher implements Fetcher<SourceRecords, So
     // tableId -> the max splitHighWatermark
     private Map<TableId, Offset> maxSplitHighWatermarkMap;
 
+    private JdbcSourceFetchTaskContext jdbcSourceConfig = null;
     private Offset currentOffset = null;
 
     private static final long READER_CLOSE_TIMEOUT_SECONDS = 30L;
@@ -81,6 +82,7 @@ public class IncrementalSourceStreamFetcher implements Fetcher<SourceRecords, So
 
     @Override
     public void submitTask(FetchTask<SourceSplitBase> fetchTask) {
+        jdbcSourceConfig = ((JdbcSourceFetchTaskContext) taskContext);
         this.streamFetchTask = fetchTask;
         this.currentStreamSplit = fetchTask.getSplit().asStreamSplit();
         configureFilter();
@@ -114,8 +116,9 @@ public class IncrementalSourceStreamFetcher implements Fetcher<SourceRecords, So
         if (streamFetchTask.isRunning()) {
             List<DataChangeEvent> batch = queue.poll();
             for (DataChangeEvent event : batch) {
-                if (shouldEmit(event.getRecord())) {
-
+                if (jdbcSourceConfig.sourceConfig.isParallelReadEnabled()
+                        || shouldEmit(event.getRecord())) {
+                    currentOffset = taskContext.getStreamOffset(event.getRecord());
                     sourceRecords.add(addIpPort(event.getRecord()));
                 }
             }
@@ -127,8 +130,6 @@ public class IncrementalSourceStreamFetcher implements Fetcher<SourceRecords, So
 
     SourceRecord addIpPort(SourceRecord record) {
         if (SourceRecordUtils.isDataChangeRecord(record)) {
-            JdbcSourceFetchTaskContext jdbcSourceConfig =
-                    ((JdbcSourceFetchTaskContext) taskContext);
             Struct value = (Struct) record.value();
             Struct source = value.getStruct(Envelope.FieldName.SOURCE);
             source.put(AbstractSourceInfo.IP_PORT, jdbcSourceConfig.ipPort);
@@ -181,8 +182,8 @@ public class IncrementalSourceStreamFetcher implements Fetcher<SourceRecords, So
     private boolean shouldEmit(SourceRecord sourceRecord) {
         if (taskContext.isDataChangeRecord(sourceRecord)) {
             TableId tableId = taskContext.getTableId(sourceRecord);
-            currentOffset = taskContext.getStreamOffset(sourceRecord);
-            if (hasEnterPureStreamPhase(tableId, currentOffset)) {
+            Offset position = taskContext.getStreamOffset(sourceRecord);
+            if (hasEnterPureStreamPhase(tableId, position)) {
                 return true;
             }
             // only the table who captured snapshot splits need to filter
@@ -192,7 +193,7 @@ public class IncrementalSourceStreamFetcher implements Fetcher<SourceRecords, So
                                     sourceRecord,
                                     splitInfo.getSplitStart(),
                                     splitInfo.getSplitEnd())
-                            && currentOffset.isAfter(splitInfo.getHighWatermark())) {
+                            && position.isAfter(splitInfo.getHighWatermark())) {
                         return true;
                     }
                 }

@@ -35,8 +35,8 @@ public abstract class JdbcSourceConfig extends BaseSourceConfig {
     protected final int port;
     protected final String username;
     protected final String password;
-    protected final List<String> databaseList;
-    protected final List<String> tableList;
+    protected List<String> databaseList;
+    protected List<String> tableList;
     protected final int fetchSize;
     protected final String serverTimeZone;
     protected final Duration connectTimeout;
@@ -163,5 +163,13 @@ public abstract class JdbcSourceConfig extends BaseSourceConfig {
 
     public String getReportReachBinlogUrl() {
         return reportReachBinlogUrl;
+    }
+
+    public void setDatabaseList(List<String> databaseList) {
+        this.databaseList = databaseList;
+    }
+
+    public void setTableList(List<String> tableList) {
+        this.tableList = tableList;
     }
 }

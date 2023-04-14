@@ -37,7 +37,7 @@ public abstract class BaseSourceConfig implements SourceConfig {
     // --------------------------------------------------------------------------------------------
     // Debezium Configurations
     // --------------------------------------------------------------------------------------------
-    protected final Properties dbzProperties;
+    protected Properties dbzProperties;
     protected transient Configuration dbzConfiguration;
 
     public BaseSourceConfig(
@@ -93,5 +93,13 @@ public abstract class BaseSourceConfig implements SourceConfig {
 
     public Configuration getDbzConfiguration() {
         return Configuration.from(dbzProperties);
+    }
+
+    public void setDbzProperties(Properties dbzProperties) {
+        this.dbzProperties = dbzProperties;
+    }
+
+    public void setDbzConfiguration(Configuration dbzConfiguration) {
+        this.dbzConfiguration = dbzConfiguration;
     }
 }

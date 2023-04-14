@@ -49,7 +49,7 @@ public class HybridSourceRecordDeserialization
     @Override
     public void deserialize(SourceRecord record, Collector<HybridSourceRecord> out)
             throws Exception {
-        if (!tableStateAware.isReady()) {
+        while (!tableStateAware.isReady()) {
             LOG.warn("等待表 JobManager 同步表信息。");
             Thread.sleep(1000);
         }

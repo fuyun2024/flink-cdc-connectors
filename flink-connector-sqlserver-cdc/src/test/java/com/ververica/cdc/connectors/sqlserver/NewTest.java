@@ -39,7 +39,7 @@ public class NewTest {
         Configuration conf = new Configuration();
         conf.setString("state.backend", "filesystem");
         conf.setString("state.checkpoints.num-retained", "30");
-        conf.setString("rest.port", "8888");
+        conf.setString("rest.port", "8889");
         conf.setString(
                 "state.checkpoints.dir",
                 "file:\\" + System.getProperty("user.dir") + "\\checkpoint-dir");
@@ -49,7 +49,7 @@ public class NewTest {
                 "execution.savepoint.path",
                 "file:\\"
                         + System.getProperty("user.dir")
-                        + "\\checkpoint-dir\\93184f5163aba7a9f0351b74faef3c6e\\chk-40");
+                        + "\\checkpoint-dir\\c086d64ec618156aa6be86d4b1c56d48\\chk-18");
 
         StreamExecutionEnvironment env =
                 StreamExecutionEnvironment.createLocalEnvironmentWithWebUI(conf);
