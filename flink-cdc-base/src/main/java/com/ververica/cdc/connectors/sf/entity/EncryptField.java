@@ -1,4 +1,4 @@
-package com.ververica.cdc.connectors.sf.request.bean;
+package com.ververica.cdc.connectors.sf.entity;
 
 import java.io.Serializable;
 

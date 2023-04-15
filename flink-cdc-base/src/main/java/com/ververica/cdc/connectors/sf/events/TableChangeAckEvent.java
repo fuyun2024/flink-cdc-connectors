@@ -20,57 +20,22 @@ package com.ververica.cdc.connectors.sf.events;
 
 import org.apache.flink.api.connector.source.SourceEvent;
 
-import com.ververica.cdc.connectors.sf.request.bean.TableInfo;
-import io.debezium.relational.TableId;
+import com.ververica.cdc.connectors.sf.entity.TableChange;
+
+import java.util.List;
 
 /** MySqlSourceEnumerator 发送 MySqlSourceReader 事件, 返回请求表需要变更 ac. */
 public class TableChangeAckEvent implements SourceEvent {
 
     private static final long serialVersionUID = 1L;
 
-    private final String tableId;
-    private TableInfo tableInfo;
-    private final TableChangeTypeEnum tableChangeType;
+    private final List<TableChange> tableChangeList;
 
-    public TableChangeAckEvent(TableId tableId, TableChangeTypeEnum tableChangeType) {
-        this.tableId = tableId.toString();
-        this.tableChangeType = tableChangeType;
+    public TableChangeAckEvent(List<TableChange> tableChangeList) {
+        this.tableChangeList = tableChangeList;
     }
 
-    public static TableChangeAckEvent asCreateStreamTable(TableId tableId) {
-        return new TableChangeAckEvent(tableId, TableChangeTypeEnum.CREATE_STREAM_TABLE);
-    }
-
-    public static TableChangeAckEvent asCreateSnapshotTable(TableId tableId) {
-        return new TableChangeAckEvent(tableId, TableChangeTypeEnum.CREATE_SNAPSHOT_TABLE);
-    }
-
-    public static TableChangeAckEvent asDeleteTable(TableId tableId) {
-        return new TableChangeAckEvent(tableId, TableChangeTypeEnum.DELETE_TABLE);
-    }
-
-    public TableId getTableId() {
-        return TableId.parse(tableId);
-    }
-
-    public TableInfo getTableInfo() {
-        return tableInfo;
-    }
-
-    public void setTableInfo(TableInfo tableInfo) {
-        this.tableInfo = tableInfo;
-    }
-
-    public TableChangeTypeEnum getTableChangeType() {
-        return tableChangeType;
-    }
-
-    public boolean isAddedTable() {
-        return TableChangeTypeEnum.CREATE_SNAPSHOT_TABLE.equals(tableChangeType)
-                || TableChangeTypeEnum.CREATE_STREAM_TABLE.equals(tableChangeType);
-    }
-
-    public boolean isDeletedTable() {
-        return TableChangeTypeEnum.DELETE_TABLE.equals(tableChangeType);
+    public List<TableChange> getTableChangeInfoList() {
+        return tableChangeList;
     }
 }

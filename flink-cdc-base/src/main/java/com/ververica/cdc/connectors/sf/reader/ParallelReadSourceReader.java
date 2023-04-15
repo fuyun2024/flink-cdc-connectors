@@ -17,6 +17,8 @@ import com.ververica.cdc.connectors.base.source.meta.split.StreamSplit;
 import com.ververica.cdc.connectors.base.source.reader.IncrementalSourceReader;
 import com.ververica.cdc.connectors.base.source.reader.IncrementalSourceRecordEmitter;
 import com.ververica.cdc.connectors.sf.deserialization.TableStateAware;
+import com.ververica.cdc.connectors.sf.entity.TableChange;
+import com.ververica.cdc.connectors.sf.entity.TableInfo;
 import com.ververica.cdc.connectors.sf.events.AllTableStateAckEvent;
 import com.ververica.cdc.connectors.sf.events.AllTableStateRequestEvent;
 import com.ververica.cdc.connectors.sf.events.BinlogSubTaskIdEvent;
@@ -26,7 +28,6 @@ import com.ververica.cdc.connectors.sf.events.FinishedSnapshotTableReportEvent;
 import com.ververica.cdc.connectors.sf.events.FinishedSnapshotTableRequestEvent;
 import com.ververica.cdc.connectors.sf.events.TableChangeAckEvent;
 import com.ververica.cdc.connectors.sf.events.TableChangeRequestEvent;
-import com.ververica.cdc.connectors.sf.request.bean.TableInfo;
 import io.debezium.relational.TableId;
 import io.debezium.relational.history.TableChanges;
 import org.slf4j.Logger;
@@ -36,8 +37,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
-
-import static com.ververica.cdc.connectors.sf.events.TableChangeTypeEnum.CREATE_SNAPSHOT_TABLE;
 
 /** 并行读取 source reader. */
 public class ParallelReadSourceReader<T, C extends SourceConfig>
@@ -137,129 +136,85 @@ public class ParallelReadSourceReader<T, C extends SourceConfig>
         }
     }
 
-    public void handleTableChange(TableChangeRequestEvent event) {
-        TableId tableId = event.getTableId();
-        TableInfo tableInfo = event.getTableInfo();
-        if (!isBinlogTask) {
+    private void handleTableChange(TableChangeRequestEvent sourceEvent) {
+        if (isBinlogTask) {
+            streamTaskHandleTableChange(sourceEvent);
+        } else {
+            snapshotTaskHandleTableChange(sourceEvent);
+        }
+    }
+
+    private void snapshotTaskHandleTableChange(TableChangeRequestEvent event) {
+        List<TableChange> tableChanges = event.getTableChangeInfoList();
+        for (TableChange tableChange : tableChanges) {
+            TableId tableId = tableChange.getTableId();
+            TableInfo tableInfo = tableChange.getTableInfo();
             LOG.debug("全量读取任务收到一张表新增 table : {} ", tableId);
             tableStateAware.addProcessedTableId(tableId, tableInfo.getTopicName());
             tableStateAware.setReady(true);
-            return;
         }
+    }
 
-        TableChangeAckEvent ackEvent = null;
-        if (event.isAddedTable() && tableStateAware.getNeedProcessedTable(tableId) != null) {
-            LOG.debug("subTask : {} 收到表 table : {} 已经在处理中", subtaskId, tableId);
-            ackEvent =
-                    event.getTableChangeType().equals(CREATE_SNAPSHOT_TABLE)
-                            ? TableChangeAckEvent.asCreateSnapshotTable(tableId)
-                            : TableChangeAckEvent.asCreateStreamTable(tableId);
-            ackEvent.setTableInfo(event.getTableInfo());
-            // 在处理中还返回，是避免 jm 和 tm 状态不一致。
-            context.sendSourceEventToCoordinator(ackEvent);
-            return;
-        }
+    private void streamTaskHandleTableChange(TableChangeRequestEvent event) {
+        List<TableChange> tableChanges = event.getTableChangeInfoList();
+        boolean hasTableChange = false;
+        for (TableChange tableChange : tableChanges) {
+            TableId tableId = tableChange.getTableId();
+            TableInfo tableInfo = tableChange.getTableInfo();
+            if (tableChange.getTableChangeType().isAddedTable()
+                    && tableStateAware.getNeedProcessedTable(tableId) != null) {
+                LOG.debug("subTask : {} 收到表 table : {} 已经在处理中", subtaskId, tableId);
+                // 在处理中，是避免 jm 和 tm 状态不一致。
+                continue;
+            }
 
-        switch (event.getTableChangeType()) {
-            case CREATE_SNAPSHOT_TABLE:
-                {
-                    LOG.info("subTask : {} 收到一张全增量读取表 table : {} ", subtaskId, tableId);
-                    tableStateAware.addBinlogStateTable(tableId, tableInfo.getTopicName());
-                    ackEvent = TableChangeAckEvent.asCreateSnapshotTable(tableId);
-                    break;
-                }
-            case CREATE_STREAM_TABLE:
-                {
-                    if (isBinlogTask) {
-                        LOG.info("subTask : {} 收到一张只读 stream 流的表 table : {} ", subtaskId, tableId);
-                        tableStateAware.addProcessedTableId(tableId, tableInfo.getTopicName());
-                        ackEvent = TableChangeAckEvent.asCreateStreamTable(tableId);
+            hasTableChange = true;
+            switch (tableChange.getTableChangeType()) {
+                case CREATE_SNAPSHOT_TABLE:
+                    {
+                        LOG.info("subTask : {} 收到一张全增量读取表 table : {} ", subtaskId, tableId);
+                        tableStateAware.addBinlogStateTable(tableId, tableInfo.getTopicName());
+                        addTableToStreamSplit(tableId);
+                        break;
                     }
-                    break;
-                }
-            case DELETE_TABLE:
-                {
-                    LOG.info("subTask : {} 收到一张需要删除的表 table : {} ", subtaskId, tableId);
-                    tableStateAware.removeTable(tableId);
-                    ackEvent = TableChangeAckEvent.asDeleteTable(tableId);
-                    break;
-                }
+                case CREATE_STREAM_TABLE:
+                    {
+                        if (isBinlogTask) {
+                            LOG.info(
+                                    "subTask : {} 收到一张只读 stream 流的表 table : {} ",
+                                    subtaskId,
+                                    tableId);
+                            tableStateAware.addProcessedTableId(tableId, tableInfo.getTopicName());
+                            addTableToStreamSplit(tableId);
+                        }
+                        break;
+                    }
+                case DELETE_TABLE:
+                    {
+                        LOG.info("subTask : {} 收到一张需要删除的表 table : {} ", subtaskId, tableId);
+                        tableStateAware.removeTable(tableId);
+                        removeTableToStreamSplit(tableId);
+                        break;
+                    }
+            }
         }
 
-        // 只有 binlog 任务需要回报，全量任务只接收信息，不需要回报。
-        if (event.isAddedTable()) {
-            LOG.info("subTask : {} 把 table : {} 添加到 stream split 配置中", subtaskId, tableId);
-            addTableToStreamSplit(tableId);
-
-            LOG.info("重启 stream 任务。");
+        if (hasTableChange) {
+            LOG.info("发现有表变更，重启 stream 任务。");
             restartStreamTaskSupplier.restartBinlogReaderTask();
         }
-        ackEvent.setTableInfo(event.getTableInfo());
-        context.sendSourceEventToCoordinator(ackEvent);
+
+        LOG.info("返回表新增成功信息给 enumerator。");
+        context.sendSourceEventToCoordinator(new TableChangeAckEvent(tableChanges));
     }
-    //
-    //    public void handleTableChange(TableChangeRequestEvent event) {
-    //        TableId tableId = event.getTableId();
-    //        TableInfo tableInfo = event.getTableInfo();
-    //        TableChangeAckEvent ackEvent = null;
-    //
-    //        if (event.isAddedTable() && tableStateAware.getNeedProcessedTable(tableId) != null) {
-    //            LOG.debug("subTask : {} 收到表 table : {} 已经在处理中");
-    //            if (isBinlogTask) {
-    //                // 在处理中还返回，是避免 jm 和 tm 状态不一致。
-    //                ackEvent =
-    //                        event.getTableChangeType().equals(CREATE_SNAPSHOT_TABLE)
-    //                                ? TableChangeAckEvent.asCreateSnapshotTable(tableId)
-    //                                : TableChangeAckEvent.asCreateStreamTable(tableId);
-    //                ackEvent.setTableInfo(event.getTableInfo());
-    //                tableStateAware.setReady(true);
-    //                context.sendSourceEventToCoordinator(ackEvent);
-    //            }
-    //            return;
-    //        }
-    //
-    //        switch (event.getTableChangeType()) {
-    //            case CREATE_SNAPSHOT_TABLE: {
-    //                LOG.info("subTask : {} 收到一张全增量读取表 table : {} ", subtaskId, tableId);
-    //                tableStateAware.addBinlogStateTable(tableId, tableInfo.getTopicName());
-    //                ackEvent = TableChangeAckEvent.asCreateSnapshotTable(tableId);
-    //                break;
-    //            }
-    //            case CREATE_STREAM_TABLE: {
-    //                if (isBinlogTask) {
-    //                    LOG.info("subTask : {} 收到一张只读 stream 流的表 table : {} ", subtaskId,
-    // tableId);
-    //                    tableStateAware.addProcessedTableId(tableId, tableInfo.getTopicName());
-    //                    ackEvent = TableChangeAckEvent.asCreateStreamTable(tableId);
-    //                }
-    //                break;
-    //            }
-    //            case DELETE_TABLE: {
-    //                LOG.info("subTask : {} 收到一张需要删除的表 table : {} ", subtaskId, tableId);
-    //                tableStateAware.removeTable(tableId);
-    //                ackEvent = TableChangeAckEvent.asDeleteTable(tableId);
-    //                break;
-    //            }
-    //        }
-    //
-    //        // 只有 binlog 任务需要回报，全量任务只接收信息，不需要回报。
-    //        if (isBinlogTask) {
-    //            if (event.isAddedTable()) {
-    //                LOG.info("subTask : {} 把 table : {} 添加到 stream split 配置中", subtaskId,
-    // tableId);
-    //                addTableToStreamSplit(tableId);
-    //
-    //                LOG.info("重启 stream 任务。");
-    //                restartStreamTaskSupplier.restartBinlogReaderTask();
-    //            }
-    //            ackEvent.setTableInfo(event.getTableInfo());
-    //            context.sendSourceEventToCoordinator(ackEvent);
-    //        }
-    //    }
 
     private void addTableToStreamSplit(TableId tableId) {
         TableChanges.TableChange tableChange = dialect.discoverTableSchemas(tableId);
         streamSplit.getTableSchemas().put(tableId, tableChange);
+    }
+
+    private void removeTableToStreamSplit(TableId tableId) {
+        streamSplit.getTableSchemas().remove(tableId);
     }
 
     private void handleAllTableStatus(AllTableStateAckEvent sourceEvent) {

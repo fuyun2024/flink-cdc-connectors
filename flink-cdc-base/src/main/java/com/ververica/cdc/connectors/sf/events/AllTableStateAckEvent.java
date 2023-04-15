@@ -20,7 +20,7 @@ package com.ververica.cdc.connectors.sf.events;
 
 import org.apache.flink.api.connector.source.SourceEvent;
 
-import com.ververica.cdc.connectors.sf.request.bean.TableInfo;
+import com.ververica.cdc.connectors.sf.entity.TableInfo;
 import io.debezium.relational.TableId;
 
 import java.util.HashMap;

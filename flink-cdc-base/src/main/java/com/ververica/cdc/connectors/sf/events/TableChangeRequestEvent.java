@@ -20,53 +20,22 @@ package com.ververica.cdc.connectors.sf.events;
 
 import org.apache.flink.api.connector.source.SourceEvent;
 
-import com.ververica.cdc.connectors.sf.request.bean.TableInfo;
-import io.debezium.relational.TableId;
+import com.ververica.cdc.connectors.sf.entity.TableChange;
+
+import java.util.List;
 
 /** MySqlSourceEnumerator 发送 MySqlSourceReader 事件, 请求表需要变更. */
 public class TableChangeRequestEvent implements SourceEvent {
 
     private static final long serialVersionUID = 1L;
 
-    private final String tableId;
-    private TableInfo tableInfo;
-    private final TableChangeTypeEnum tableChangeType;
+    private final List<TableChange> tableChangeList;
 
-    public TableChangeRequestEvent(TableId tableId, TableChangeTypeEnum tableChangeType) {
-        this.tableId = tableId.toString();
-        this.tableChangeType = tableChangeType;
+    public TableChangeRequestEvent(List<TableChange> tableChangeList) {
+        this.tableChangeList = tableChangeList;
     }
 
-    public static TableChangeRequestEvent asCreateStreamTable(TableId tableId) {
-        return new TableChangeRequestEvent(tableId, TableChangeTypeEnum.CREATE_STREAM_TABLE);
-    }
-
-    public static TableChangeRequestEvent asCreateSnapshotTable(TableId tableId) {
-        return new TableChangeRequestEvent(tableId, TableChangeTypeEnum.CREATE_SNAPSHOT_TABLE);
-    }
-
-    public static TableChangeRequestEvent asDeleteTable(TableId tableId) {
-        return new TableChangeRequestEvent(tableId, TableChangeTypeEnum.DELETE_TABLE);
-    }
-
-    public TableId getTableId() {
-        return TableId.parse(tableId);
-    }
-
-    public TableInfo getTableInfo() {
-        return tableInfo;
-    }
-
-    public void setTableInfo(TableInfo tableInfo) {
-        this.tableInfo = tableInfo;
-    }
-
-    public TableChangeTypeEnum getTableChangeType() {
-        return tableChangeType;
-    }
-
-    public boolean isAddedTable() {
-        return TableChangeTypeEnum.CREATE_SNAPSHOT_TABLE.equals(tableChangeType)
-                || TableChangeTypeEnum.CREATE_STREAM_TABLE.equals(tableChangeType);
+    public List<TableChange> getTableChangeInfoList() {
+        return tableChangeList;
     }
 }

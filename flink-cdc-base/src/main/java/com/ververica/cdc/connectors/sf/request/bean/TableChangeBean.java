@@ -1,6 +1,7 @@
 package com.ververica.cdc.connectors.sf.request.bean;
 
 import com.alibaba.fastjson.JSON;
+import com.ververica.cdc.connectors.sf.entity.EncryptField;
 import io.debezium.relational.TableId;
 
 import java.util.List;
@@ -57,14 +58,6 @@ public class TableChangeBean {
         this.topicName = topicName;
     }
 
-    public boolean isSnapshotSync() {
-        return syncMode == 1;
-    }
-
-    public boolean isStreamSync() {
-        return syncMode == 0;
-    }
-
     public void setSyncMode(int syncMode) {
         this.syncMode = syncMode;
     }
@@ -85,6 +78,18 @@ public class TableChangeBean {
         this.encryptFields = encryptFields;
     }
 
+    public TableId getTableId() {
+        return new TableId(dbName, schemaName, tableName);
+    }
+
+    public boolean isSnapshotSync() {
+        return isAddedTable() && syncMode == 1;
+    }
+
+    public boolean isStreamSync() {
+        return isAddedTable() && syncMode == 0;
+    }
+
     public boolean isAddedTable() {
         return AccessTableStatus.INITIAL.equals(this.status)
                 || AccessTableStatus.RUNNING.equals(this.status);
@@ -93,10 +98,6 @@ public class TableChangeBean {
     public boolean isDeleteTable() {
         return AccessTableStatus.STOPING.equals(this.status)
                 || AccessTableStatus.STOPED.equals(this.status);
-    }
-
-    public TableId getTableId() {
-        return new TableId(dbName, schemaName, tableName);
     }
 
     @Override

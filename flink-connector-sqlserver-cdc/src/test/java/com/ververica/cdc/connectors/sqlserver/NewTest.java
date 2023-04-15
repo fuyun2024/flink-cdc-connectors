@@ -45,11 +45,11 @@ public class NewTest {
                 "file:\\" + System.getProperty("user.dir") + "\\checkpoint-dir");
 
         // 从某个 checkpoint 启动
-        conf.setString(
-                "execution.savepoint.path",
-                "file:\\"
-                        + System.getProperty("user.dir")
-                        + "\\checkpoint-dir\\c086d64ec618156aa6be86d4b1c56d48\\chk-18");
+        //        conf.setString(
+        //                "execution.savepoint.path",
+        //                "file:\\"
+        //                        + System.getProperty("user.dir")
+        //                        + "\\checkpoint-dir\\c086d64ec618156aa6be86d4b1c56d48\\chk-18");
 
         StreamExecutionEnvironment env =
                 StreamExecutionEnvironment.createLocalEnvironmentWithWebUI(conf);

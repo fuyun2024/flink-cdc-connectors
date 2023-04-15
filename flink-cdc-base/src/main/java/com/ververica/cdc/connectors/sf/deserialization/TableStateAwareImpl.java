@@ -1,7 +1,7 @@
 package com.ververica.cdc.connectors.sf.deserialization;
 
 import com.ververica.cdc.connectors.base.source.meta.offset.Offset;
-import com.ververica.cdc.connectors.sf.request.bean.TableInfo;
+import com.ververica.cdc.connectors.sf.entity.TableInfo;
 import io.debezium.relational.TableId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

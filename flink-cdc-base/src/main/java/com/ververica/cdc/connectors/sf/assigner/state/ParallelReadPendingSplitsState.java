@@ -3,7 +3,7 @@ package com.ververica.cdc.connectors.sf.assigner.state;
 import com.ververica.cdc.connectors.base.source.assigner.state.SnapshotPendingSplitsState;
 import com.ververica.cdc.connectors.base.source.meta.offset.Offset;
 import com.ververica.cdc.connectors.base.source.meta.split.SchemalessSnapshotSplit;
-import com.ververica.cdc.connectors.sf.request.bean.TableInfo;
+import com.ververica.cdc.connectors.sf.entity.TableInfo;
 import io.debezium.relational.TableId;
 import io.debezium.relational.history.TableChanges;
 

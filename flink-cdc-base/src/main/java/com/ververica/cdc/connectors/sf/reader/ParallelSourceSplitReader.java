@@ -140,7 +140,7 @@ public class ParallelSourceSplitReader<C extends SourceConfig>
                 LOG.info("正在清空队列中的数据。。。");
                 currentFetcher.pollSplitRecords();
             } catch (InterruptedException e) {
-                LOG.error("停止 binlog 任务失败。",e);
+                LOG.error("停止 binlog 任务失败。", e);
             }
         }
     }

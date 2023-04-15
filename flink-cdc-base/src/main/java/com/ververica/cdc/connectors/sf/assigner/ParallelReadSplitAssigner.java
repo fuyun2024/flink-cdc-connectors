@@ -10,7 +10,7 @@ import com.ververica.cdc.connectors.base.source.meta.split.SnapshotSplit;
 import com.ververica.cdc.connectors.base.source.meta.split.SourceSplitBase;
 import com.ververica.cdc.connectors.base.source.meta.split.StreamSplit;
 import com.ververica.cdc.connectors.sf.assigner.state.ParallelReadPendingSplitsState;
-import com.ververica.cdc.connectors.sf.request.bean.TableInfo;
+import com.ververica.cdc.connectors.sf.entity.TableInfo;
 import io.debezium.relational.TableId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
