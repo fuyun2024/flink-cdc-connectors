@@ -116,10 +116,12 @@ public class IncrementalSourceStreamFetcher implements Fetcher<SourceRecords, So
         if (streamFetchTask.isRunning()) {
             List<DataChangeEvent> batch = queue.poll();
             for (DataChangeEvent event : batch) {
-                if (jdbcSourceConfig.sourceConfig.isParallelReadEnabled()
-                        || shouldEmit(event.getRecord())) {
-                    currentOffset = taskContext.getStreamOffset(event.getRecord());
-                    sourceRecords.add(addIpPort(event.getRecord()));
+                SourceRecord record = event.getRecord();
+                if (taskContext.isDataChangeRecord(record)) {
+                    currentOffset = taskContext.getStreamOffset(record);
+                }
+                if (jdbcSourceConfig.sourceConfig.isParallelReadEnabled() || shouldEmit(record)) {
+                    sourceRecords.add(addIpPort(record));
                 }
             }
         }

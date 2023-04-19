@@ -61,13 +61,13 @@ public class NewTest {
                 .addDefaultKryoSerializer(unmodColl, UnmodifiableCollectionsSerializer.class);
 
         // enable checkpoint
-        env.enableCheckpointing(10000);
+        env.enableCheckpointing(1000);
         // set the source parallelism to 2
         env.fromSource(
                         sqlServerSource,
                         WatermarkStrategy.noWatermarks(),
                         "SqlServerIncrementalSource")
-                .setParallelism(4)
+                .setParallelism(2)
                 .print()
                 .setParallelism(1);
 
