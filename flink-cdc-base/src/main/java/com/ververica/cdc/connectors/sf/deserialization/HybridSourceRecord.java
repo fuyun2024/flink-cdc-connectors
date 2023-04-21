@@ -18,12 +18,15 @@
 
 package com.ververica.cdc.connectors.sf.deserialization;
 
+import com.ververica.cdc.connectors.base.utils.SourceRecordUtils;
+import com.ververica.cdc.connectors.sf.entity.EncryptField;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.StringJoiner;
 
@@ -37,6 +40,7 @@ public class HybridSourceRecord extends SourceRecord {
 
     private String topicName;
     private RecordType recordType;
+    private List<EncryptField> encryptFields;
 
     public HybridSourceRecord(SourceRecord sourceRecord, RecordType recordType) {
         super(
@@ -82,8 +86,8 @@ public class HybridSourceRecord extends SourceRecord {
     }
 
     /** 获取 db.table.primaryKey. */
-    public String getDbTablePrimaryKey() {
-        return getDbTable() + "." + getPrimaryKeyValue();
+    public String getTableIdAndPrimaryKey() {
+        return SourceRecordUtils.getTableId(this) + "." + getPrimaryKeyValue();
     }
 
     /** 获取 db.table 值. */
@@ -138,6 +142,18 @@ public class HybridSourceRecord extends SourceRecord {
         this.recordType = recordType;
     }
 
+    public List<EncryptField> getEncryptFields() {
+        return encryptFields;
+    }
+
+    public void setEncryptFields(List<EncryptField> encryptFields) {
+        this.encryptFields = encryptFields;
+    }
+
+    public boolean isNeedEncrypt() {
+        return encryptFields != null && encryptFields.size() > 0;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -153,7 +169,9 @@ public class HybridSourceRecord extends SourceRecord {
         }
 
         HybridSourceRecord that = (HybridSourceRecord) o;
-        return Objects.equals(topicName, that.topicName) && recordType == that.recordType;
+        return Objects.equals(topicName, that.topicName)
+                && recordType == that.recordType
+                && encryptFields == that.encryptFields;
     }
 
     @Override
@@ -161,6 +179,7 @@ public class HybridSourceRecord extends SourceRecord {
         int result = super.hashCode();
         result = 31 * result + (topicName != null ? topicName.hashCode() : 0);
         result = 31 * result + (recordType != null ? recordType.hashCode() : 0);
+        result = 31 * result + (encryptFields != null ? encryptFields.hashCode() : 0);
         return result;
     }
 
@@ -172,6 +191,8 @@ public class HybridSourceRecord extends SourceRecord {
                 + '\''
                 + ", recordType="
                 + recordType
+                + ", encryptFields="
+                + encryptFields
                 + "} "
                 + super.toString();
     }

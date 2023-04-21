@@ -38,19 +38,19 @@ public interface TableStateAware {
     void initAllState(Map<TableId, TableInfo> tableInfos, List<TableId> needBinlogStates);
 
     /** add processed table. */
-    void addProcessedTableId(TableId tableId, String topicName);
+    void addProcessedTableId(TableId tableId, TableInfo tableInfo);
 
     /** remove table. */
     void removeTable(TableId tableId);
 
     /** add need state table. */
-    void addBinlogStateTable(TableId tableId, String topicName);
+    void addBinlogStateTable(TableId tableId, TableInfo tableInfo);
 
     /** add need state table. */
     void removeBinlogStateTable(TableId tableId);
 
     /** is need processed table. */
-    String getNeedProcessedTable(TableId tableId);
+    TableInfo getNeedProcessedTable(TableId tableId);
 
     /** is need add state table. */
     boolean isNeedAddStateTable(TableId tableId);

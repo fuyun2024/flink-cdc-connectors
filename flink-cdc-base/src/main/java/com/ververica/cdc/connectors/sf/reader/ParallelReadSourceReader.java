@@ -150,7 +150,7 @@ public class ParallelReadSourceReader<T, C extends SourceConfig>
             TableId tableId = tableChange.getTableId();
             TableInfo tableInfo = tableChange.getTableInfo();
             LOG.debug("全量读取任务收到一张表新增 table : {} ", tableId);
-            tableStateAware.addProcessedTableId(tableId, tableInfo.getTopicName());
+            tableStateAware.addProcessedTableId(tableId, tableInfo);
             tableStateAware.setReady(true);
         }
     }
@@ -173,7 +173,7 @@ public class ParallelReadSourceReader<T, C extends SourceConfig>
                 case CREATE_SNAPSHOT_TABLE:
                     {
                         LOG.info("subTask : {} 收到一张全增量读取表 table : {} ", subtaskId, tableId);
-                        tableStateAware.addBinlogStateTable(tableId, tableInfo.getTopicName());
+                        tableStateAware.addBinlogStateTable(tableId, tableInfo);
                         addTableToStreamSplit(tableId);
                         break;
                     }
@@ -184,7 +184,7 @@ public class ParallelReadSourceReader<T, C extends SourceConfig>
                                     "subTask : {} 收到一张只读 stream 流的表 table : {} ",
                                     subtaskId,
                                     tableId);
-                            tableStateAware.addProcessedTableId(tableId, tableInfo.getTopicName());
+                            tableStateAware.addProcessedTableId(tableId, tableInfo);
                             addTableToStreamSplit(tableId);
                         }
                         break;

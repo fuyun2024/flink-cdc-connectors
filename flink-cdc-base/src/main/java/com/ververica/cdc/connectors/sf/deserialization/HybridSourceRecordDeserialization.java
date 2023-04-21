@@ -24,9 +24,9 @@ import org.apache.flink.util.Collector;
 import com.ververica.cdc.connectors.base.source.meta.offset.Offset;
 import com.ververica.cdc.connectors.base.source.meta.offset.OffsetFactory;
 import com.ververica.cdc.connectors.base.utils.SourceRecordUtils;
+import com.ververica.cdc.connectors.sf.entity.TableInfo;
 import com.ververica.cdc.debezium.DebeziumDeserializationSchema;
 import io.debezium.relational.TableId;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,8 +55,8 @@ public class HybridSourceRecordDeserialization
         }
 
         TableId tableId = SourceRecordUtils.getTableId(record);
-        String topicName = tableStateAware.getNeedProcessedTable(tableId);
-        if (StringUtils.isBlank(topicName)) {
+        TableInfo tableInfo = tableStateAware.getNeedProcessedTable(tableId);
+        if (tableInfo == null) {
             return;
         }
 
@@ -72,7 +72,8 @@ public class HybridSourceRecordDeserialization
 
         // 设置 topic name
         tableStateAware.setCurrentOffset(getOffsetPosition(record.sourceOffset()));
-        hybridSourceRecord.setTopicName(topicName);
+        hybridSourceRecord.setTopicName(tableInfo.getTopicName());
+        hybridSourceRecord.setEncryptFields(tableInfo.getEncryptFields());
         emit(hybridSourceRecord, out);
     }
 

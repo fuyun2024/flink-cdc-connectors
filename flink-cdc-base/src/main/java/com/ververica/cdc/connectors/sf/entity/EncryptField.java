@@ -1,6 +1,7 @@
 package com.ververica.cdc.connectors.sf.entity;
 
 import java.io.Serializable;
+import java.util.Objects;
 
 /** encrypt field. @Author: created by eHui @Date: 2022/5/27 */
 public class EncryptField implements Serializable {
@@ -31,5 +32,33 @@ public class EncryptField implements Serializable {
         CREDIT_CLEAN,
         ADDRESS,
         ADDRESS_CLEAN,
+    }
+
+    @Override
+    public String toString() {
+        return "EncryptField{"
+                + "fieldName='"
+                + fieldName
+                + '\''
+                + ", encryptType="
+                + encryptType
+                + '}';
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        EncryptField that = (EncryptField) o;
+        return Objects.equals(fieldName, that.fieldName) && encryptType == that.encryptType;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(fieldName, encryptType);
     }
 }

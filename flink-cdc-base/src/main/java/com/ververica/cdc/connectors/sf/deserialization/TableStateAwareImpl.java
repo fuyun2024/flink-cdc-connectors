@@ -21,14 +21,14 @@ public class TableStateAwareImpl implements TableStateAware {
     private boolean isReady = false;
 
     /** 需要处理下发的表，不在表中的数据，会被直接过滤掉. */
-    private final Map<TableId, String> tableTopicNames = new HashMap<>();
+    private final Map<TableId, TableInfo> tableInfos = new HashMap<>();
 
     /** 需要加上 binlog_state 表. */
     private final Map<TableId, Boolean> needBinlogStateTableIds = new HashMap<>();
 
     @Override
-    public String getNeedProcessedTable(TableId tableId) {
-        return tableTopicNames.get(tableId);
+    public TableInfo getNeedProcessedTable(TableId tableId) {
+        return tableInfos.get(tableId);
     }
 
     @Override
@@ -70,41 +70,40 @@ public class TableStateAwareImpl implements TableStateAware {
         LOG.info("初始化所有表的状态信息。");
         LOG.info("正在 cdc 采集的表 tableList : {} ", tableInfos.keySet());
         LOG.info("还在进行全量读取中的表 tableList : {} ", needBinlogStates);
-        tableInfos.forEach(
-                (tableId, tableInfo) -> tableTopicNames.put(tableId, tableInfo.getTopicName()));
+        tableInfos.forEach((tableId, tableInfo) -> tableInfos.put(tableId, tableInfo));
         needBinlogStates.forEach(tableId -> needBinlogStateTableIds.put(tableId, true));
     }
 
     @Override
-    public void addProcessedTableId(TableId tableId, String topicName) {
-        if (tableTopicNames.get(tableId) == null) {
+    public void addProcessedTableId(TableId tableId, TableInfo tableInfo) {
+        if (tableInfos.get(tableId) == null) {
             //            LOG.info("新增 - table : {} 表采集", tableId);
-            tableTopicNames.put(tableId, topicName);
+            tableInfos.put(tableId, tableInfo);
         }
     }
 
     @Override
     public void removeTable(TableId tableId) {
-        if (tableTopicNames.get(tableId) == null) {
+        if (tableInfos.get(tableId) == null) {
             LOG.warn("table : {} 不在处理列表中 ", tableId);
         } else {
             LOG.info("删除 - table : {} 表采集", tableId);
-            tableTopicNames.remove(tableId);
+            tableInfos.remove(tableId);
         }
     }
 
     @Override
-    public void addBinlogStateTable(TableId tableId, String topicName) {
-        if (tableTopicNames.get(tableId) == null) {
+    public void addBinlogStateTable(TableId tableId, TableInfo tableInfo) {
+        if (tableInfos.get(tableId) == null) {
             //            LOG.info("新增 - table : {} 表 BINLOG_STATE 采集", tableId);
-            tableTopicNames.put(tableId, topicName);
+            tableInfos.put(tableId, tableInfo);
             needBinlogStateTableIds.put(tableId, true);
         }
     }
 
     @Override
     public void removeBinlogStateTable(TableId tableId) {
-        if (tableTopicNames.get(tableId) == null) {
+        if (tableInfos.get(tableId) == null) {
             LOG.warn("table : {} 不在 BINLOG_STATE 列表中", tableId);
         } else {
             LOG.info("删除 - table : {} 表 BINLOG_STATE 采集", tableId);
