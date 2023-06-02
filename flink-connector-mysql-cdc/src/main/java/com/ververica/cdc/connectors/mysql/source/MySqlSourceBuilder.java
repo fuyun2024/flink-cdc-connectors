@@ -236,6 +236,11 @@ public class MySqlSourceBuilder<T> {
         return this;
     }
 
+    public MySqlSourceBuilder<T> otherProperties(Properties otherProperties) {
+        this.configFactory.setOtherProperties(otherProperties);
+        return this;
+    }
+
     /**
      * Build the {@link MySqlSource}.
      *

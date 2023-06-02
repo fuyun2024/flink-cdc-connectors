@@ -16,7 +16,7 @@
 
 package com.ververica.cdc.connectors.mongodb.source.config;
 
-import com.ververica.cdc.connectors.base.config.SourceConfig;
+import com.ververica.cdc.connectors.base.config.BaseBoundednessSoureConfig;
 import com.ververica.cdc.connectors.base.options.StartupOptions;
 import com.ververica.cdc.connectors.mongodb.source.MongoDBSource;
 
@@ -24,12 +24,13 @@ import javax.annotation.Nullable;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Properties;
 
 import static com.ververica.cdc.connectors.mongodb.source.utils.MongoUtils.buildConnectionString;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /** A MongoDB Source configuration which is used by {@link MongoDBSource}. */
-public class MongoDBSourceConfig implements SourceConfig {
+public class MongoDBSourceConfig extends BaseBoundednessSoureConfig {
 
     private static final long serialVersionUID = 1L;
 
@@ -63,6 +64,7 @@ public class MongoDBSourceConfig implements SourceConfig {
             int heartbeatIntervalMillis,
             int splitMetaGroupSize,
             int splitSizeMB) {
+        super(new Properties());
         this.hosts = checkNotNull(hosts);
         this.username = username;
         this.password = password;
@@ -147,6 +149,11 @@ public class MongoDBSourceConfig implements SourceConfig {
     @Override
     public boolean isIncludeSchemaChanges() {
         return false;
+    }
+
+    @Override
+    public Properties getOtherProperties() {
+        return new Properties();
     }
 
     @Override

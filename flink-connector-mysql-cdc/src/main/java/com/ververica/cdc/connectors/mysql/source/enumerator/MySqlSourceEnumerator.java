@@ -18,25 +18,16 @@ package com.ververica.cdc.connectors.mysql.source.enumerator;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.connector.source.SourceEvent;
-import org.apache.flink.api.connector.source.SplitEnumerator;
 import org.apache.flink.api.connector.source.SplitEnumeratorContext;
 import org.apache.flink.util.FlinkRuntimeException;
 
 import org.apache.flink.shaded.guava30.com.google.common.collect.Lists;
 
+import com.ververica.cdc.connectors.base.source.assigner.state.PendingSplitsState;
 import com.ververica.cdc.connectors.mysql.source.assigners.MySqlHybridSplitAssigner;
 import com.ververica.cdc.connectors.mysql.source.assigners.MySqlSplitAssigner;
-import com.ververica.cdc.connectors.mysql.source.assigners.state.PendingSplitsState;
 import com.ververica.cdc.connectors.mysql.source.config.MySqlSourceConfig;
-import com.ververica.cdc.connectors.mysql.source.events.BinlogSplitMetaEvent;
-import com.ververica.cdc.connectors.mysql.source.events.BinlogSplitMetaRequestEvent;
-import com.ververica.cdc.connectors.mysql.source.events.BinlogSplitUpdateAckEvent;
-import com.ververica.cdc.connectors.mysql.source.events.BinlogSplitUpdateRequestEvent;
-import com.ververica.cdc.connectors.mysql.source.events.FinishedSnapshotSplitsAckEvent;
-import com.ververica.cdc.connectors.mysql.source.events.FinishedSnapshotSplitsReportEvent;
-import com.ververica.cdc.connectors.mysql.source.events.FinishedSnapshotSplitsRequestEvent;
-import com.ververica.cdc.connectors.mysql.source.events.LatestFinishedSplitsNumberEvent;
-import com.ververica.cdc.connectors.mysql.source.events.LatestFinishedSplitsNumberRequestEvent;
+import com.ververica.cdc.connectors.mysql.source.events.*;
 import com.ververica.cdc.connectors.mysql.source.offset.BinlogOffset;
 import com.ververica.cdc.connectors.mysql.source.split.FinishedSnapshotSplitInfo;
 import com.ververica.cdc.connectors.mysql.source.split.MySqlSplit;
@@ -45,12 +36,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.TreeSet;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static com.ververica.cdc.connectors.mysql.source.assigners.AssignerStatus.isNewlyAddedAssigningSnapshotFinished;
@@ -60,7 +46,7 @@ import static com.ververica.cdc.connectors.mysql.source.assigners.AssignerStatus
  * source readers.
  */
 @Internal
-public class MySqlSourceEnumerator implements SplitEnumerator<MySqlSplit, PendingSplitsState> {
+public class MySqlSourceEnumerator extends MysqlBoundednessEnumerator {
     private static final Logger LOG = LoggerFactory.getLogger(MySqlSourceEnumerator.class);
     private static final long CHECK_EVENT_INTERVAL = 30_000L;
 
@@ -75,7 +61,13 @@ public class MySqlSourceEnumerator implements SplitEnumerator<MySqlSplit, Pendin
     public MySqlSourceEnumerator(
             SplitEnumeratorContext<MySqlSplit> context,
             MySqlSourceConfig sourceConfig,
-            MySqlSplitAssigner splitAssigner) {
+            MySqlSplitAssigner splitAssigner,
+            Map<String, Map<String, String>> extMap) {
+        super(context, sourceConfig);
+        if (null != extMap && extMap.size() > 0) {
+            stop(extMap);
+            LOG.info(" init incrementalSourceEnumerator and  extMap is not null should stop");
+        }
         this.context = context;
         this.sourceConfig = sourceConfig;
         this.splitAssigner = splitAssigner;
@@ -152,16 +144,27 @@ public class MySqlSourceEnumerator implements SplitEnumerator<MySqlSplit, Pendin
                     "The enumerator receives request from subtask {} for the latest finished splits number after added newly tables. ",
                     subtaskId);
             handleLatestFinishedSplitNumberRequest(subtaskId);
+        } else if (sourceEvent instanceof FinishedBinlogEvent && sourceConfig.isBounded()) {
+            final FinishedBinlogEvent finishedBinlogEvent = (FinishedBinlogEvent) sourceEvent;
+            Map<String, Map<String, String>> extMap = new HashMap<>();
+            extMap.put("start", finishedBinlogEvent.startingOffset.getOffset());
+            extMap.put("end", finishedBinlogEvent.endingOffset.getOffset());
+            LOG.info(
+                    "The enumerator receives request for FinishedStreamSplitEvent from subtask {}. extMap {}",
+                    subtaskId,
+                    extMap);
+            stop(extMap);
+            ((MySqlHybridSplitAssigner) splitAssigner).batchEnd();
         }
     }
 
     @Override
-    public PendingSplitsState snapshotState(long checkpointId) {
+    public PendingSplitsState doSnapshotState(long checkpointId) {
         return splitAssigner.snapshotState(checkpointId);
     }
 
     @Override
-    public void notifyCheckpointComplete(long checkpointId) {
+    public void doNotifyCheckpointComplete(long checkpointId) {
         splitAssigner.notifyCheckpointComplete(checkpointId);
         // binlog split may be available after checkpoint complete
         assignSplits();

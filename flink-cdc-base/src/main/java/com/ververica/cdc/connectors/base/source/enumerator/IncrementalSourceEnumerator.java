@@ -18,20 +18,16 @@ package com.ververica.cdc.connectors.base.source.enumerator;
 
 import org.apache.flink.annotation.Experimental;
 import org.apache.flink.api.connector.source.SourceEvent;
-import org.apache.flink.api.connector.source.SplitEnumerator;
 import org.apache.flink.api.connector.source.SplitEnumeratorContext;
 import org.apache.flink.util.FlinkRuntimeException;
 
 import org.apache.flink.shaded.guava30.com.google.common.collect.Lists;
 
-import com.ververica.cdc.connectors.base.config.SourceConfig;
+import com.ververica.cdc.connectors.base.config.BaseBoundednessSoureConfig;
+import com.ververica.cdc.connectors.base.source.assigner.HybridSplitAssigner;
 import com.ververica.cdc.connectors.base.source.assigner.SplitAssigner;
 import com.ververica.cdc.connectors.base.source.assigner.state.PendingSplitsState;
-import com.ververica.cdc.connectors.base.source.meta.events.FinishedSnapshotSplitsAckEvent;
-import com.ververica.cdc.connectors.base.source.meta.events.FinishedSnapshotSplitsReportEvent;
-import com.ververica.cdc.connectors.base.source.meta.events.FinishedSnapshotSplitsRequestEvent;
-import com.ververica.cdc.connectors.base.source.meta.events.StreamSplitMetaEvent;
-import com.ververica.cdc.connectors.base.source.meta.events.StreamSplitMetaRequestEvent;
+import com.ververica.cdc.connectors.base.source.meta.events.*;
 import com.ververica.cdc.connectors.base.source.meta.offset.Offset;
 import com.ververica.cdc.connectors.base.source.meta.split.FinishedSnapshotSplitInfo;
 import com.ververica.cdc.connectors.base.source.meta.split.SourceSplitBase;
@@ -40,12 +36,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.TreeSet;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -53,13 +44,11 @@ import java.util.stream.Collectors;
  * source readers.
  */
 @Experimental
-public class IncrementalSourceEnumerator
-        implements SplitEnumerator<SourceSplitBase, PendingSplitsState> {
+public class IncrementalSourceEnumerator extends JdbcBoundednessEnumerator<SourceSplitBase> {
     private static final Logger LOG = LoggerFactory.getLogger(IncrementalSourceEnumerator.class);
     private static final long CHECK_EVENT_INTERVAL = 30_000L;
 
     private final SplitEnumeratorContext<SourceSplitBase> context;
-    private final SourceConfig sourceConfig;
     private final SplitAssigner splitAssigner;
 
     // using TreeSet to prefer assigning stream split to task-0 for easier debug
@@ -68,10 +57,15 @@ public class IncrementalSourceEnumerator
 
     public IncrementalSourceEnumerator(
             SplitEnumeratorContext<SourceSplitBase> context,
-            SourceConfig sourceConfig,
-            SplitAssigner splitAssigner) {
+            BaseBoundednessSoureConfig sourceConfig,
+            SplitAssigner splitAssigner,
+            Map<String, Map<String, String>> extMap) {
+        super(context, sourceConfig);
+        if (null != extMap && extMap.size() > 0) {
+            stop(extMap);
+            LOG.info(" init incrementalSourceEnumerator and  extMap is not null should stop");
+        }
         this.context = context;
-        this.sourceConfig = sourceConfig;
         this.splitAssigner = splitAssigner;
         this.readersAwaitingSplit = new TreeSet<>();
     }
@@ -99,7 +93,7 @@ public class IncrementalSourceEnumerator
 
     @Override
     public void addSplitsBack(List<SourceSplitBase> splits, int subtaskId) {
-        LOG.debug("Incremental Source Enumerator adds splits back: {}", splits);
+        LOG.info("Incremental Source Enumerator adds splits back: {}", splits);
         splitAssigner.addSplits(splits);
     }
 
@@ -128,16 +122,29 @@ public class IncrementalSourceEnumerator
                     "The enumerator receives request for stream split meta from subtask {}.",
                     subtaskId);
             sendStreamMetaRequestEvent(subtaskId, (StreamSplitMetaRequestEvent) sourceEvent);
+        } else if (sourceEvent instanceof FinishedStreamSplitEvent && bounded) {
+
+            final FinishedStreamSplitEvent finishedBinlogEvent =
+                    (FinishedStreamSplitEvent) sourceEvent;
+            Map<String, Map<String, String>> extMap = new HashMap<>();
+            extMap.put("start", finishedBinlogEvent.startingOffset.getOffset());
+            extMap.put("end", finishedBinlogEvent.endingOffset.getOffset());
+            LOG.info(
+                    "The enumerator receives request for FinishedStreamSplitEvent from subtask {}. extMap {}",
+                    subtaskId,
+                    extMap);
+            stop(extMap);
+            ((HybridSplitAssigner) splitAssigner).batchEnd();
         }
     }
 
     @Override
-    public PendingSplitsState snapshotState(long checkpointId) {
+    public PendingSplitsState doSnapshotState(long checkpointId) {
         return splitAssigner.snapshotState(checkpointId);
     }
 
     @Override
-    public void notifyCheckpointComplete(long checkpointId) {
+    public void doNotifyCheckpointComplete(long checkpointId) {
         splitAssigner.notifyCheckpointComplete(checkpointId);
         // stream split may be available after checkpoint complete
         assignSplits();

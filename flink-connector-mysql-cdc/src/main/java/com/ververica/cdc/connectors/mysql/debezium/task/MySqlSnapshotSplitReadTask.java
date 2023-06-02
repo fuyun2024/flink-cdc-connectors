@@ -16,6 +16,7 @@
 
 package com.ververica.cdc.connectors.mysql.debezium.task;
 
+import com.ververica.cdc.connectors.base.source.reader.external.rate.JdbcRateLimiter;
 import com.ververica.cdc.connectors.mysql.debezium.dispatcher.EventDispatcherImpl;
 import com.ververica.cdc.connectors.mysql.debezium.dispatcher.SignalEventDispatcher;
 import com.ververica.cdc.connectors.mysql.debezium.reader.SnapshotSplitReader;
@@ -55,6 +56,7 @@ import java.sql.SQLException;
 import java.sql.Types;
 import java.time.Duration;
 import java.util.Calendar;
+import java.util.Optional;
 
 import static com.ververica.cdc.connectors.mysql.debezium.DebeziumUtils.currentBinlogOffset;
 
@@ -76,6 +78,7 @@ public class MySqlSnapshotSplitReadTask
     private final TopicSelector<TableId> topicSelector;
     private final EventDispatcher.SnapshotReceiver snapshotReceiver;
     private final SnapshotChangeEventSourceMetrics snapshotChangeEventSourceMetrics;
+    private Optional<JdbcRateLimiter> rateLimiter;
 
     public MySqlSnapshotSplitReadTask(
             MySqlConnectorConfig connectorConfig,
@@ -86,7 +89,8 @@ public class MySqlSnapshotSplitReadTask
             TopicSelector<TableId> topicSelector,
             EventDispatcher.SnapshotReceiver snapshotReceiver,
             Clock clock,
-            MySqlSnapshotSplit snapshotSplit) {
+            MySqlSnapshotSplit snapshotSplit,
+            Optional<JdbcRateLimiter> rateLimiter) {
         super(connectorConfig, snapshotChangeEventSourceMetrics);
         this.connectorConfig = connectorConfig;
         this.databaseSchema = databaseSchema;
@@ -97,6 +101,7 @@ public class MySqlSnapshotSplitReadTask
         this.topicSelector = topicSelector;
         this.snapshotReceiver = snapshotReceiver;
         this.snapshotChangeEventSourceMetrics = snapshotChangeEventSourceMetrics;
+        this.rateLimiter = rateLimiter;
     }
 
     @Override
@@ -240,6 +245,9 @@ public class MySqlSnapshotSplitReadTask
                     Column actualColumn = table.columns().get(i);
                     row[columnArray.getColumns()[i].position() - 1] =
                             readField(rs, i + 1, actualColumn, table);
+                }
+                if (rateLimiter != null && rateLimiter.isPresent()) {
+                    rateLimiter.get().setBytesPreRecord(row);
                 }
                 if (logTimer.expired()) {
                     long stop = clock.currentTimeInMillis();

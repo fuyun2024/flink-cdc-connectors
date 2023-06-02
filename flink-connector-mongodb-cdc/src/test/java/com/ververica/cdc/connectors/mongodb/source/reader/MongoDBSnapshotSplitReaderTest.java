@@ -113,7 +113,7 @@ public class MongoDBSnapshotSplitReaderTest extends MongoDBSourceTestBase {
         assertTrue(snapshotSplits.size() > 0);
 
         IncrementalSourceSplitReader<MongoDBSourceConfig> snapshotSplitReader =
-                new IncrementalSourceSplitReader<>(0, dialect, sourceConfig);
+                new IncrementalSourceSplitReader<>(0, dialect, sourceConfig, null);
 
         int retry = 0;
         long actualCount = 0;

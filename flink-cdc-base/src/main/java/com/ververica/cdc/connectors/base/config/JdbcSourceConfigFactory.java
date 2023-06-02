@@ -54,6 +54,7 @@ public abstract class JdbcSourceConfigFactory implements Factory<JdbcSourceConfi
     protected int connectMaxRetries = JdbcSourceOptions.CONNECT_MAX_RETRIES.defaultValue();
     protected int connectionPoolSize = JdbcSourceOptions.CONNECTION_POOL_SIZE.defaultValue();
     protected Properties dbzProperties;
+    protected Properties otherProperties;
     protected String chunkKeyColumn;
 
     /** Integer port number of the database server. */
@@ -183,6 +184,11 @@ public abstract class JdbcSourceConfigFactory implements Factory<JdbcSourceConfi
     /** The Debezium connector properties. For example, "snapshot.mode". */
     public JdbcSourceConfigFactory debeziumProperties(Properties properties) {
         this.dbzProperties = properties;
+        return this;
+    }
+
+    public JdbcSourceConfigFactory otherProperties(Properties otherProperties) {
+        this.otherProperties = otherProperties;
         return this;
     }
 

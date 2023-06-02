@@ -20,6 +20,7 @@ import org.apache.flink.core.io.SimpleVersionedSerializer;
 import org.apache.flink.core.memory.DataInputDeserializer;
 import org.apache.flink.core.memory.DataOutputSerializer;
 
+import com.ververica.cdc.connectors.base.source.assigner.state.PendingSplitsState;
 import com.ververica.cdc.connectors.mysql.source.assigners.AssignerStatus;
 import com.ververica.cdc.connectors.mysql.source.offset.BinlogOffset;
 import com.ververica.cdc.connectors.mysql.source.split.MySqlSchemalessSnapshotSplit;
@@ -181,6 +182,7 @@ public class PendingSplitsStateSerializer implements SimpleVersionedSerializer<P
             HybridPendingSplitsState state, DataOutputSerializer out) throws IOException {
         serializeSnapshotPendingSplitsState(state.getSnapshotPendingSplits(), out);
         out.writeBoolean(state.isBinlogSplitAssigned());
+        out.writeBoolean(state.isBatchEnd());
     }
 
     private void serializeBinlogPendingSplitsState(
@@ -243,7 +245,9 @@ public class PendingSplitsStateSerializer implements SimpleVersionedSerializer<P
         SnapshotPendingSplitsState snapshotPendingSplitsState =
                 deserializeLegacySnapshotPendingSplitsState(splitVersion, in);
         boolean isBinlogSplitAssigned = in.readBoolean();
-        return new HybridPendingSplitsState(snapshotPendingSplitsState, isBinlogSplitAssigned);
+        boolean batchEnd = in.readBoolean();
+        return new HybridPendingSplitsState(
+                snapshotPendingSplitsState, isBinlogSplitAssigned, batchEnd);
     }
 
     private SnapshotPendingSplitsState deserializeSnapshotPendingSplitsState(
@@ -321,7 +325,9 @@ public class PendingSplitsStateSerializer implements SimpleVersionedSerializer<P
         SnapshotPendingSplitsState snapshotPendingSplitsState =
                 deserializeSnapshotPendingSplitsState(version, splitVersion, in);
         boolean isBinlogSplitAssigned = in.readBoolean();
-        return new HybridPendingSplitsState(snapshotPendingSplitsState, isBinlogSplitAssigned);
+        boolean batchEnd = in.readBoolean();
+        return new HybridPendingSplitsState(
+                snapshotPendingSplitsState, isBinlogSplitAssigned, batchEnd);
     }
 
     private BinlogPendingSplitsState deserializeBinlogPendingSplitsState(DataInputDeserializer in)

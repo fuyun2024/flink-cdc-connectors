@@ -100,4 +100,8 @@ public abstract class Offset implements Comparable<Offset>, Serializable {
     public int hashCode() {
         return Objects.hashCode(offset);
     }
+
+    public boolean isBoundedRead() {
+        return false;
+    }
 }

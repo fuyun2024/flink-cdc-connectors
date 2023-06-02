@@ -156,9 +156,10 @@ public class SqlServerStreamingChangeEventSource
             // LSN should be increased for the first run only immediately after snapshot completion
             // otherwise we might skip an incomplete transaction after restart
             boolean shouldIncreaseFromLsn = offsetContext.isSnapshotCompleted();
+            int tryTimes = 100;
             while (context.isRunning()) {
                 commitTransaction();
-                afterHandleLsn(offsetContext);
+                afterHandleLsn(offsetContext, tryTimes <= 0);
                 final Lsn toLsn =
                         getToLsn(
                                 dataConnection, lastProcessedPosition, maxTransactionsPerIteration);
@@ -174,10 +175,17 @@ public class SqlServerStreamingChangeEventSource
                 // There is no change in the database
                 if (toLsn.compareTo(lastProcessedPosition.getCommitLsn()) <= 0
                         && shouldIncreaseFromLsn) {
-                    LOGGER.debug("No change in the database");
+                    LOGGER.info(
+                            "No change in the database toLsn"
+                                    + toLsn
+                                    + " lastProcessedPosition.getCommitLsn() "
+                                    + lastProcessedPosition.getCommitLsn());
                     metronome.pause();
+                    Thread.sleep(1000);
+                    tryTimes--;
                     continue;
                 }
+                tryTimes = 100;
 
                 // Reading interval is inclusive so we need to move LSN forward but not for first
                 // run as TX might not be streamed completely
@@ -548,6 +556,11 @@ public class SqlServerStreamingChangeEventSource
 
     /** expose control to the user to stop the connector. */
     protected void afterHandleLsn(SqlServerOffsetContext offsetContext) {
+        // do nothing
+    }
+
+    /** expose control to the user to stop the connector. */
+    protected void afterHandleLsn(SqlServerOffsetContext offsetContext, boolean end) {
         // do nothing
     }
 }

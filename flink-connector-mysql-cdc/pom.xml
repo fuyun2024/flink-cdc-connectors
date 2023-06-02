@@ -181,6 +181,12 @@ under the License.
             <version>2.4.0</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>com.ververica</groupId>
+            <artifactId>flink-cdc-base</artifactId>
+            <version>2.4-SNAPSHOT</version>
+            <scope>compile</scope>
+        </dependency>
 
     </dependencies>
 

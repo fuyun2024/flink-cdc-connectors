@@ -31,6 +31,7 @@ import io.debezium.relational.RelationalDatabaseSchema;
 import io.debezium.relational.Table;
 import io.debezium.relational.TableId;
 import io.debezium.util.SchemaNameAdjuster;
+import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 
@@ -63,7 +64,14 @@ public abstract class JdbcSourceFetchTaskContext implements FetchTask.Context {
 
     @Override
     public boolean isDataChangeRecord(SourceRecord record) {
-        return false;
+        Schema valueSchema = record.valueSchema();
+        Struct value = (Struct) record.value();
+        if (valueSchema == null || value == null) {
+            return false;
+        } else {
+            return valueSchema.field(Envelope.FieldName.OPERATION) != null
+                    && value.getString(Envelope.FieldName.OPERATION) != null;
+        }
     }
 
     @Override
@@ -157,7 +165,7 @@ public abstract class JdbcSourceFetchTaskContext implements FetchTask.Context {
     }
 
     public SchemaNameAdjuster getSchemaNameAdjuster() {
-        return null;
+        return SchemaNameAdjuster.create();
     }
 
     public abstract RelationalDatabaseSchema getDatabaseSchema();

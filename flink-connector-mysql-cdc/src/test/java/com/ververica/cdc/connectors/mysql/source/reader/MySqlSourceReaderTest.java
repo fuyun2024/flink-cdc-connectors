@@ -298,7 +298,7 @@ public class MySqlSourceReaderTest extends MySqlSourceTestBase {
 
     private MySqlSplitReader createSplitReader(
             MySqlSourceConfig configuration, MySqlSourceReaderContext readerContext) {
-        return new MySqlSplitReader(configuration, 0, readerContext);
+        return new MySqlSplitReader(configuration, 0, readerContext, null);
     }
 
     private void makeBinlogEventsInOneTransaction(MySqlSourceConfig sourceConfig, String tableId)

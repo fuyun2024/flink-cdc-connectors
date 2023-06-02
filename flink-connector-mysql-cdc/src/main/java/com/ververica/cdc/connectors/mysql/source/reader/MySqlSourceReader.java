@@ -28,16 +28,9 @@ import org.apache.flink.util.Preconditions;
 
 import com.ververica.cdc.connectors.mysql.debezium.DebeziumUtils;
 import com.ververica.cdc.connectors.mysql.source.config.MySqlSourceConfig;
-import com.ververica.cdc.connectors.mysql.source.events.BinlogSplitMetaEvent;
-import com.ververica.cdc.connectors.mysql.source.events.BinlogSplitMetaRequestEvent;
-import com.ververica.cdc.connectors.mysql.source.events.BinlogSplitUpdateAckEvent;
-import com.ververica.cdc.connectors.mysql.source.events.BinlogSplitUpdateRequestEvent;
-import com.ververica.cdc.connectors.mysql.source.events.FinishedSnapshotSplitsAckEvent;
-import com.ververica.cdc.connectors.mysql.source.events.FinishedSnapshotSplitsReportEvent;
-import com.ververica.cdc.connectors.mysql.source.events.FinishedSnapshotSplitsRequestEvent;
-import com.ververica.cdc.connectors.mysql.source.events.LatestFinishedSplitsNumberEvent;
-import com.ververica.cdc.connectors.mysql.source.events.LatestFinishedSplitsNumberRequestEvent;
+import com.ververica.cdc.connectors.mysql.source.events.*;
 import com.ververica.cdc.connectors.mysql.source.offset.BinlogOffset;
+import com.ververica.cdc.connectors.mysql.source.offset.BinlogOffsetKind;
 import com.ververica.cdc.connectors.mysql.source.split.FinishedSnapshotSplitInfo;
 import com.ververica.cdc.connectors.mysql.source.split.MySqlBinlogSplit;
 import com.ververica.cdc.connectors.mysql.source.split.MySqlBinlogSplitState;
@@ -161,12 +154,24 @@ public class MySqlSourceReader<T>
             for (MySqlSplitState mySqlSplitState : finishedSplitIds.values()) {
                 MySqlSplit mySqlSplit = mySqlSplitState.toMySqlSplit();
                 if (mySqlSplit.isBinlogSplit()) {
-                    suspendedBinlogSplit = toSuspendedBinlogSplit(mySqlSplit.asBinlogSplit());
-                    LOG.info(
-                            "binlog split reader suspended success after the newly added table process, current offset {}",
-                            suspendedBinlogSplit.getStartingOffset());
-                    context.sendSourceEventToCoordinator(
-                            new LatestFinishedSplitsNumberRequestEvent());
+
+                    final MySqlBinlogSplit mySqlBinlogSplit = mySqlSplit.asBinlogSplit();
+                    if (BinlogOffsetKind.NON_STOPPING.equals(
+                            mySqlBinlogSplit.getEndingOffset().getOffsetKind())) {
+                        suspendedBinlogSplit = toSuspendedBinlogSplit(mySqlSplit.asBinlogSplit());
+                        LOG.info(
+                                "binlog split reader suspended success after the newly added table process, current offset {}",
+                                suspendedBinlogSplit.getStartingOffset());
+                        context.sendSourceEventToCoordinator(
+                                new LatestFinishedSplitsNumberRequestEvent());
+                    } else {
+                        // mySqlSourceReaderContext.setStopBinlogSplitReader();
+                        context.sendSourceEventToCoordinator(
+                                new FinishedBinlogEvent(
+                                        mySqlBinlogSplit.getStartingOffset(),
+                                        mySqlBinlogSplit.getEndingOffset()));
+                    }
+
                     // do not request next split when the reader is suspended
                     requestNextSplit = false;
                 } else {

@@ -42,6 +42,8 @@ public class SqlServerTypeUtils {
      */
     private static DataType convertFromColumn(Column column) {
         switch (column.jdbcType()) {
+            case Types.BINARY:
+                return DataTypes.BYTES();
             case Types.CHAR:
             case Types.VARCHAR:
             case Types.NCHAR:
@@ -55,6 +57,8 @@ public class SqlServerTypeUtils {
             case Types.SMALLINT:
             case Types.TINYINT:
                 return DataTypes.INT();
+            case Types.BIGINT:
+                return DataTypes.BIGINT();
             case Types.FLOAT:
             case Types.REAL:
             case Types.DOUBLE:

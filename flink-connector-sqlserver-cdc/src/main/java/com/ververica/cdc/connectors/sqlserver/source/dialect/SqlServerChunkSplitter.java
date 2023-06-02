@@ -48,8 +48,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-import static com.ververica.cdc.connectors.base.utils.ObjectUtils.doubleCompare;
-
 /**
  * The {@code ChunkSplitter} used to split SqlServer table into a set of chunks for JDBC data
  * source.
@@ -206,27 +204,27 @@ public class SqlServerChunkSplitter implements JdbcSourceChunkSplitter {
         final double distributionFactorUpper = sourceConfig.getDistributionFactorUpper();
         final double distributionFactorLower = sourceConfig.getDistributionFactorLower();
 
-        if (isEvenlySplitColumn(splitColumn)) {
-            long approximateRowCnt = queryApproximateRowCnt(jdbc, tableId);
-            double distributionFactor =
-                    calculateDistributionFactor(tableId, min, max, approximateRowCnt);
-
-            boolean dataIsEvenlyDistributed =
-                    doubleCompare(distributionFactor, distributionFactorLower) >= 0
-                            && doubleCompare(distributionFactor, distributionFactorUpper) <= 0;
-
-            if (dataIsEvenlyDistributed) {
-                // the minimum dynamic chunk size is at least 1
-                final int dynamicChunkSize = Math.max((int) (distributionFactor * chunkSize), 1);
-                return splitEvenlySizedChunks(
-                        tableId, min, max, approximateRowCnt, chunkSize, dynamicChunkSize);
-            } else {
-                return splitUnevenlySizedChunks(
-                        jdbc, tableId, splitColumnName, min, max, chunkSize);
-            }
-        } else {
-            return splitUnevenlySizedChunks(jdbc, tableId, splitColumnName, min, max, chunkSize);
-        }
+        // if (isEvenlySplitColumn(splitColumn)) {
+        //     long approximateRowCnt = queryApproximateRowCnt(jdbc, tableId);
+        //     double distributionFactor =
+        //             calculateDistributionFactor(tableId, min, max, approximateRowCnt);
+        //
+        //     boolean dataIsEvenlyDistributed =
+        //             doubleCompare(distributionFactor, distributionFactorLower) >= 0
+        //                     && doubleCompare(distributionFactor, distributionFactorUpper) <= 0;
+        //
+        //     if (dataIsEvenlyDistributed) {
+        //         // the minimum dynamic chunk size is at least 1
+        //         final int dynamicChunkSize = Math.max((int) (distributionFactor * chunkSize), 1);
+        //         return splitEvenlySizedChunks(
+        //                 tableId, min, max, approximateRowCnt, chunkSize, dynamicChunkSize);
+        //     } else {
+        //         return splitUnevenlySizedChunks(
+        //                 jdbc, tableId, splitColumnName, min, max, chunkSize);
+        //     }
+        // } else {
+        return splitUnevenlySizedChunks(jdbc, tableId, splitColumnName, min, max, chunkSize);
+        // }
     }
 
     /**

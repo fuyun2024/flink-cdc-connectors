@@ -18,11 +18,13 @@ package com.ververica.cdc.connectors.base.source.reader;
 
 import org.apache.flink.annotation.Experimental;
 import org.apache.flink.annotation.VisibleForTesting;
+import org.apache.flink.api.connector.source.SourceReaderContext;
 import org.apache.flink.connector.base.source.reader.RecordsWithSplitIds;
 import org.apache.flink.connector.base.source.reader.splitreader.SplitReader;
 import org.apache.flink.connector.base.source.reader.splitreader.SplitsAddition;
 import org.apache.flink.connector.base.source.reader.splitreader.SplitsChange;
 
+import com.ververica.cdc.connectors.base.config.BoundednessConfig;
 import com.ververica.cdc.connectors.base.config.SourceConfig;
 import com.ververica.cdc.connectors.base.dialect.DataSourceDialect;
 import com.ververica.cdc.connectors.base.source.meta.split.ChangeEventRecords;
@@ -32,6 +34,8 @@ import com.ververica.cdc.connectors.base.source.reader.external.FetchTask;
 import com.ververica.cdc.connectors.base.source.reader.external.Fetcher;
 import com.ververica.cdc.connectors.base.source.reader.external.IncrementalSourceScanFetcher;
 import com.ververica.cdc.connectors.base.source.reader.external.IncrementalSourceStreamFetcher;
+import com.ververica.cdc.connectors.base.source.reader.external.rate.RateLimitSplitReader;
+import com.ververica.cdc.connectors.base.source.reader.fetch.BaseScanFetchTask;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,7 +49,7 @@ import java.util.Queue;
 
 /** Basic class read {@link SourceSplitBase} and return {@link SourceRecord}. */
 @Experimental
-public class IncrementalSourceSplitReader<C extends SourceConfig>
+public class IncrementalSourceSplitReader<C extends SourceConfig> extends RateLimitSplitReader
         implements SplitReader<SourceRecords, SourceSplitBase> {
 
     private static final Logger LOG = LoggerFactory.getLogger(IncrementalSourceSplitReader.class);
@@ -58,7 +62,11 @@ public class IncrementalSourceSplitReader<C extends SourceConfig>
     private final C sourceConfig;
 
     public IncrementalSourceSplitReader(
-            int subtaskId, DataSourceDialect<C> dataSourceDialect, C sourceConfig) {
+            int subtaskId,
+            DataSourceDialect<C> dataSourceDialect,
+            C sourceConfig,
+            SourceReaderContext readerContext) {
+        super((BoundednessConfig) sourceConfig, readerContext);
         this.subtaskId = subtaskId;
         this.splits = new ArrayDeque<>();
         this.dataSourceDialect = dataSourceDialect;
@@ -135,7 +143,21 @@ public class IncrementalSourceSplitReader<C extends SourceConfig>
                 currentFetcher = new IncrementalSourceStreamFetcher(taskContext, subtaskId);
                 LOG.info("Stream fetcher is created.");
             }
-            currentFetcher.submitTask(dataSourceDialect.createFetchTask(nextSplit));
+            final FetchTask<SourceSplitBase> fetchTask =
+                    dataSourceDialect.createFetchTask(nextSplit);
+            if (fetchTask instanceof BaseScanFetchTask) {
+                // 这里传进去是为了收集数据大小
+                ((BaseScanFetchTask) fetchTask).setRateLimiter(rateLimiter);
+                final Object acquire = super.acquire(sourceConfig.getSplitSize());
+                LOG.info(
+                        "subtaskId "
+                                + subtaskId
+                                + " acquire cost :"
+                                + acquire
+                                + ", for nextSplit "
+                                + nextSplit);
+            }
+            currentFetcher.submitTask(fetchTask);
         }
     }
 

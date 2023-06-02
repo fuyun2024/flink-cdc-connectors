@@ -16,21 +16,31 @@
 
 package com.ververica.cdc.connectors.mysql.source.assigners.state;
 
+import com.ververica.cdc.connectors.base.source.assigner.state.PendingSplitsState;
+
 import java.util.Objects;
 
 /** A {@link PendingSplitsState} for pending hybrid (snapshot & binlog) splits. */
 public class HybridPendingSplitsState extends PendingSplitsState {
     private final SnapshotPendingSplitsState snapshotPendingSplits;
     private final boolean isBinlogSplitAssigned;
+    private final boolean batchEnd;
 
     public HybridPendingSplitsState(
-            SnapshotPendingSplitsState snapshotPendingSplits, boolean isBinlogSplitAssigned) {
+            SnapshotPendingSplitsState snapshotPendingSplits,
+            boolean isBinlogSplitAssigned,
+            boolean batchEnd) {
         this.snapshotPendingSplits = snapshotPendingSplits;
         this.isBinlogSplitAssigned = isBinlogSplitAssigned;
+        this.batchEnd = batchEnd;
     }
 
     public SnapshotPendingSplitsState getSnapshotPendingSplits() {
         return snapshotPendingSplits;
+    }
+
+    public boolean isBatchEnd() {
+        return batchEnd;
     }
 
     public boolean isBinlogSplitAssigned() {
@@ -47,12 +57,13 @@ public class HybridPendingSplitsState extends PendingSplitsState {
         }
         HybridPendingSplitsState that = (HybridPendingSplitsState) o;
         return isBinlogSplitAssigned == that.isBinlogSplitAssigned
-                && Objects.equals(snapshotPendingSplits, that.snapshotPendingSplits);
+                && Objects.equals(snapshotPendingSplits, that.snapshotPendingSplits)
+                && Objects.equals(batchEnd, that.batchEnd);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(snapshotPendingSplits, isBinlogSplitAssigned);
+        return Objects.hash(snapshotPendingSplits, isBinlogSplitAssigned, batchEnd);
     }
 
     @Override
@@ -62,6 +73,8 @@ public class HybridPendingSplitsState extends PendingSplitsState {
                 + snapshotPendingSplits
                 + ", isBinlogSplitAssigned="
                 + isBinlogSplitAssigned
+                + ", batchEnd="
+                + batchEnd
                 + '}';
     }
 }

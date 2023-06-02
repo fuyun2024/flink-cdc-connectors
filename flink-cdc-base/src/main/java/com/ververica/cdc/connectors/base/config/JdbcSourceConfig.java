@@ -65,7 +65,8 @@ public abstract class JdbcSourceConfig extends BaseSourceConfig {
             Duration connectTimeout,
             int connectMaxRetries,
             int connectionPoolSize,
-            String chunkKeyColumn) {
+            String chunkKeyColumn,
+            Properties otherProperties) {
         super(
                 startupOptions,
                 splitSize,
@@ -74,7 +75,8 @@ public abstract class JdbcSourceConfig extends BaseSourceConfig {
                 distributionFactorLower,
                 includeSchemaChanges,
                 dbzProperties,
-                dbzConfiguration);
+                dbzConfiguration,
+                otherProperties);
         this.driverClassName = driverClassName;
         this.hostname = hostname;
         this.port = port;
@@ -88,6 +90,53 @@ public abstract class JdbcSourceConfig extends BaseSourceConfig {
         this.connectMaxRetries = connectMaxRetries;
         this.connectionPoolSize = connectionPoolSize;
         this.chunkKeyColumn = chunkKeyColumn;
+    }
+
+    public JdbcSourceConfig(
+            StartupOptions startupOptions,
+            List<String> databaseList,
+            List<String> tableList,
+            int splitSize,
+            int splitMetaGroupSize,
+            double distributionFactorUpper,
+            double distributionFactorLower,
+            boolean includeSchemaChanges,
+            Properties dbzProperties,
+            Configuration dbzConfiguration,
+            String driverClassName,
+            String hostname,
+            int port,
+            String username,
+            String password,
+            int fetchSize,
+            String serverTimeZone,
+            Duration connectTimeout,
+            int connectMaxRetries,
+            int connectionPoolSize,
+            String chunkKeyColumn) {
+        this(
+                startupOptions,
+                databaseList,
+                tableList,
+                splitSize,
+                splitMetaGroupSize,
+                distributionFactorUpper,
+                distributionFactorLower,
+                includeSchemaChanges,
+                dbzProperties,
+                dbzConfiguration,
+                driverClassName,
+                hostname,
+                port,
+                username,
+                password,
+                fetchSize,
+                serverTimeZone,
+                connectTimeout,
+                connectMaxRetries,
+                connectionPoolSize,
+                chunkKeyColumn,
+                new Properties());
     }
 
     public abstract RelationalDatabaseConnectorConfig getDbzConnectorConfig();

@@ -21,7 +21,8 @@ import com.ververica.cdc.connectors.base.source.meta.split.SnapshotSplit;
 import com.ververica.cdc.connectors.base.source.meta.split.SourceSplitBase;
 import com.ververica.cdc.connectors.base.source.meta.split.StreamSplit;
 import com.ververica.cdc.connectors.base.source.meta.wartermark.WatermarkKind;
-import com.ververica.cdc.connectors.base.source.reader.external.FetchTask;
+import com.ververica.cdc.connectors.base.source.reader.external.rate.JdbcRateLimiter;
+import com.ververica.cdc.connectors.base.source.reader.fetch.BaseScanFetchTask;
 import com.ververica.cdc.connectors.sqlserver.source.offset.LsnOffset;
 import com.ververica.cdc.connectors.sqlserver.source.reader.fetch.SqlServerStreamFetchTask.LsnSplitReadTask;
 import io.debezium.DebeziumException;
@@ -59,17 +60,17 @@ import java.sql.Types;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Map;
+import java.util.Optional;
 
-import static com.ververica.cdc.connectors.sqlserver.source.utils.SqlServerConnectionUtils.createSqlServerConnection;
 import static com.ververica.cdc.connectors.sqlserver.source.utils.SqlServerUtils.buildSplitScanQuery;
 import static com.ververica.cdc.connectors.sqlserver.source.utils.SqlServerUtils.currentLsn;
 import static com.ververica.cdc.connectors.sqlserver.source.utils.SqlServerUtils.readTableSplitDataStatement;
 
 /** The task to work for fetching data of SqlServer table snapshot split. */
-public class SqlServerScanFetchTask implements FetchTask<SourceSplitBase> {
+public class SqlServerScanFetchTask extends BaseScanFetchTask {
+    protected volatile boolean taskRunning = false;
 
     private final SnapshotSplit split;
-    private volatile boolean taskRunning = false;
 
     private SqlServerSnapshotSplitReadTask snapshotSplitReadTask;
 
@@ -90,7 +91,8 @@ public class SqlServerScanFetchTask implements FetchTask<SourceSplitBase> {
                         sourceFetchContext.getDatabaseSchema(),
                         sourceFetchContext.getConnection(),
                         sourceFetchContext.getDispatcher(),
-                        split);
+                        split,
+                        rateLimiter);
         SnapshotSplitChangeEventSourceContext changeEventSourceContext =
                 new SnapshotSplitChangeEventSourceContext();
         SnapshotResult snapshotResult =
@@ -116,9 +118,15 @@ public class SqlServerScanFetchTask implements FetchTask<SourceSplitBase> {
         if (snapshotResult.isCompletedOrSkipped()) {
             final LsnSplitReadTask backfillBinlogReadTask =
                     createBackFillLsnSplitReadTask(backfillBinlogSplit, sourceFetchContext);
+
+            final SqlServerOffsetContext.Loader loader =
+                    new SqlServerOffsetContext.Loader(sourceFetchContext.getDbzConnectorConfig());
+            final SqlServerOffsetContext offsetContext =
+                    loader.load(backfillBinlogSplit.getStartingOffset().getOffset());
+            offsetContext.preSnapshotCompletion();
+
             backfillBinlogReadTask.execute(
-                    new SnapshotBinlogSplitChangeEventSourceContext(),
-                    sourceFetchContext.getOffsetContext());
+                    new SnapshotBinlogSplitChangeEventSourceContext(), offsetContext);
         } else {
             taskRunning = false;
             throw new IllegalStateException(
@@ -158,13 +166,16 @@ public class SqlServerScanFetchTask implements FetchTask<SourceSplitBase> {
                         .getDbzConfiguration()
                         .edit()
                         .with("table.include.list", split.getTableId().toString())
+                        // .with("table.include.list", String.format("%s.%s",
+                        // split.getTableId().schema(), split.getTableId().table()))
                         // Disable heartbeat event in snapshot split fetcher
                         .with(Heartbeat.HEARTBEAT_INTERVAL, 0)
                         .build();
         // task to read binlog and backfill for current split
+        final SqlServerConnectorConfig sqlServerConnectorConfig = context.getDbzConnectorConfig();
         return new LsnSplitReadTask(
-                new SqlServerConnectorConfig(dezConf),
-                createSqlServerConnection(context.getSourceConfig().getDbzConfiguration()),
+                sqlServerConnectorConfig,
+                context.getConnection(),
                 context.getMetaDataConnection(),
                 context.getDispatcher(),
                 context.getErrorHandler(),
@@ -199,6 +210,7 @@ public class SqlServerScanFetchTask implements FetchTask<SourceSplitBase> {
         private final SnapshotSplit snapshotSplit;
         private final SqlServerOffsetContext offsetContext;
         private final SnapshotProgressListener snapshotProgressListener;
+        private final Optional<JdbcRateLimiter> rateLimiter;
 
         public SqlServerSnapshotSplitReadTask(
                 SqlServerConnectorConfig connectorConfig,
@@ -207,7 +219,8 @@ public class SqlServerScanFetchTask implements FetchTask<SourceSplitBase> {
                 SqlServerDatabaseSchema databaseSchema,
                 SqlServerConnection jdbcConnection,
                 JdbcSourceEventDispatcher dispatcher,
-                SnapshotSplit snapshotSplit) {
+                SnapshotSplit snapshotSplit,
+                Optional<JdbcRateLimiter> rateLimiter) {
             super(connectorConfig, snapshotProgressListener);
             this.offsetContext = previousOffset;
             this.connectorConfig = connectorConfig;
@@ -217,6 +230,7 @@ public class SqlServerScanFetchTask implements FetchTask<SourceSplitBase> {
             this.clock = Clock.SYSTEM;
             this.snapshotSplit = snapshotSplit;
             this.snapshotProgressListener = snapshotProgressListener;
+            this.rateLimiter = rateLimiter;
         }
 
         @Override
@@ -269,7 +283,7 @@ public class SqlServerScanFetchTask implements FetchTask<SourceSplitBase> {
                     "Snapshot step 3 - Determining high watermark {} for split {}",
                     highWatermark,
                     snapshotSplit);
-            ((SnapshotSplitChangeEventSourceContext) (context)).setHighWatermark(lowWatermark);
+            ((SnapshotSplitChangeEventSourceContext) (context)).setHighWatermark(highWatermark);
             dispatcher.dispatchWatermarkEvent(
                     offsetContext.getPartition(), snapshotSplit, highWatermark, WatermarkKind.HIGH);
             return SnapshotResult.completed(ctx.offset);
@@ -346,6 +360,9 @@ public class SqlServerScanFetchTask implements FetchTask<SourceSplitBase> {
                         Column actualColumn = table.columns().get(i);
                         row[columnArray.getColumns()[i].position() - 1] =
                                 readField(rs, i + 1, actualColumn, table);
+                    }
+                    if (rateLimiter != null && rateLimiter.isPresent()) {
+                        rateLimiter.get().setBytesPreRecord(row);
                     }
                     if (logTimer.expired()) {
                         long stop = clock.currentTimeInMillis();

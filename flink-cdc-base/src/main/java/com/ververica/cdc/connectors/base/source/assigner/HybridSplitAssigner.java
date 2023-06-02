@@ -16,7 +16,7 @@
 
 package com.ververica.cdc.connectors.base.source.assigner;
 
-import com.ververica.cdc.connectors.base.config.SourceConfig;
+import com.ververica.cdc.connectors.base.config.BaseBoundednessSoureConfig;
 import com.ververica.cdc.connectors.base.dialect.DataSourceDialect;
 import com.ververica.cdc.connectors.base.source.assigner.state.HybridPendingSplitsState;
 import com.ververica.cdc.connectors.base.source.assigner.state.PendingSplitsState;
@@ -39,8 +39,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import static org.apache.flink.util.Preconditions.checkState;
+
 /** Assigner for Hybrid split which contains snapshot splits and stream splits. */
-public class HybridSplitAssigner<C extends SourceConfig> implements SplitAssigner {
+public class HybridSplitAssigner<C extends BaseBoundednessSoureConfig> implements SplitAssigner {
 
     private static final Logger LOG = LoggerFactory.getLogger(HybridSplitAssigner.class);
     private static final String STREAM_SPLIT_ID = "stream-split";
@@ -48,10 +50,12 @@ public class HybridSplitAssigner<C extends SourceConfig> implements SplitAssigne
     private final int splitMetaGroupSize;
 
     private boolean isStreamSplitAssigned;
+    private boolean batchEnd = false;
 
     private final SnapshotSplitAssigner<C> snapshotSplitAssigner;
 
     private final OffsetFactory offsetFactory;
+    private final C sourceConfig;
 
     public HybridSplitAssigner(
             C sourceConfig,
@@ -68,6 +72,7 @@ public class HybridSplitAssigner<C extends SourceConfig> implements SplitAssigne
                         isTableIdCaseSensitive,
                         dialect,
                         offsetFactory),
+                sourceConfig,
                 false,
                 sourceConfig.getSplitMetaGroupSize(),
                 offsetFactory);
@@ -86,6 +91,7 @@ public class HybridSplitAssigner<C extends SourceConfig> implements SplitAssigne
                         checkpoint.getSnapshotPendingSplits(),
                         dialect,
                         offsetFactory),
+                sourceConfig,
                 checkpoint.isStreamSplitAssigned(),
                 sourceConfig.getSplitMetaGroupSize(),
                 offsetFactory);
@@ -93,6 +99,7 @@ public class HybridSplitAssigner<C extends SourceConfig> implements SplitAssigne
 
     private HybridSplitAssigner(
             SnapshotSplitAssigner<C> snapshotSplitAssigner,
+            C sourceConfig,
             boolean isStreamSplitAssigned,
             int splitMetaGroupSize,
             OffsetFactory offsetFactory) {
@@ -100,6 +107,7 @@ public class HybridSplitAssigner<C extends SourceConfig> implements SplitAssigne
         this.isStreamSplitAssigned = isStreamSplitAssigned;
         this.splitMetaGroupSize = splitMetaGroupSize;
         this.offsetFactory = offsetFactory;
+        this.sourceConfig = sourceConfig;
     }
 
     @Override
@@ -162,7 +170,7 @@ public class HybridSplitAssigner<C extends SourceConfig> implements SplitAssigne
     @Override
     public PendingSplitsState snapshotState(long checkpointId) {
         return new HybridPendingSplitsState(
-                snapshotSplitAssigner.snapshotState(checkpointId), isStreamSplitAssigned);
+                snapshotSplitAssigner.snapshotState(checkpointId), isStreamSplitAssigned, batchEnd);
     }
 
     @Override
@@ -187,11 +195,23 @@ public class HybridSplitAssigner<C extends SourceConfig> implements SplitAssigne
         final List<FinishedSnapshotSplitInfo> finishedSnapshotSplitInfos = new ArrayList<>();
 
         Offset minOffset = null;
+        Offset maxOffset = null;
+        LOG.info(
+                String.format(
+                        "create stream split splitFinishedOffsets %s, assignedSnapshotSplit %s",
+                        splitFinishedOffsets, assignedSnapshotSplit));
         for (SchemalessSnapshotSplit split : assignedSnapshotSplit) {
             // find the min offset of change log
             Offset changeLogOffset = splitFinishedOffsets.get(split.splitId());
+            LOG.info(
+                    String.format(
+                            "create stream split finished spit %s, changeLogOffset %s",
+                            split, changeLogOffset));
             if (minOffset == null || changeLogOffset.isBefore(minOffset)) {
                 minOffset = changeLogOffset;
+            }
+            if (maxOffset == null || changeLogOffset.isAfter(maxOffset)) {
+                maxOffset = changeLogOffset;
             }
             finishedSnapshotSplitInfos.add(
                     new FinishedSnapshotSplitInfo(
@@ -207,12 +227,27 @@ public class HybridSplitAssigner<C extends SourceConfig> implements SplitAssigne
         // then transfer them
 
         boolean divideMetaToGroups = finishedSnapshotSplitInfos.size() > splitMetaGroupSize;
+        Offset endingOffset = offsetFactory.createNoStoppingOffset();
+        LOG.info(String.format("create stream split min %s, max %s", minOffset, maxOffset));
+        if (sourceConfig.isBounded()) {
+            checkState(
+                    endingOffset != null,
+                    String.format("stream split is bounded, but the endingOffset is null"));
+            endingOffset = maxOffset;
+            /*!= null ? maxOffset : offsetFactory.newOffset();*/
+        }
+        minOffset = minOffset == null ? offsetFactory.createInitialOffset() : minOffset;
+        LOG.info(String.format("create stream split %s, %s", minOffset, endingOffset));
         return new StreamSplit(
                 STREAM_SPLIT_ID,
-                minOffset == null ? offsetFactory.createInitialOffset() : minOffset,
-                offsetFactory.createNoStoppingOffset(),
+                minOffset,
+                endingOffset,
                 divideMetaToGroups ? new ArrayList<>() : finishedSnapshotSplitInfos,
                 new HashMap<>(),
                 finishedSnapshotSplitInfos.size());
+    }
+
+    public void batchEnd() {
+        batchEnd = true;
     }
 }

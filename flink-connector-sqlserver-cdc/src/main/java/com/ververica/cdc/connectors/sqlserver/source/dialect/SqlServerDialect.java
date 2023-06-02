@@ -43,6 +43,8 @@ import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static com.ververica.cdc.connectors.sqlserver.source.utils.SqlServerConnectionUtils.createSqlServerConnection;
 import static com.ververica.cdc.connectors.sqlserver.source.utils.SqlServerUtils.currentLsn;
@@ -100,8 +102,16 @@ public class SqlServerDialect implements JdbcDataSourceDialect {
     public List<TableId> discoverDataCollections(JdbcSourceConfig sourceConfig) {
         SqlServerSourceConfig sqlserverSourceConfig = (SqlServerSourceConfig) sourceConfig;
         try (JdbcConnection jdbcConnection = openJdbcConnection(sourceConfig)) {
-            return SqlServerConnectionUtils.listTables(
-                    jdbcConnection, sqlserverSourceConfig.getTableFilters());
+            final List<TableId> tableIds =
+                    SqlServerConnectionUtils.listTables(
+                            jdbcConnection, sqlserverSourceConfig.getTableFilters());
+            final Set<String> dataBases =
+                    sourceConfig.getDatabaseList().stream().collect(Collectors.toSet());
+            final List<TableId> filteredTable =
+                    tableIds.stream()
+                            .filter(x -> dataBases.contains(x.catalog()))
+                            .collect(Collectors.toList());
+            return filteredTable;
         } catch (SQLException e) {
             throw new FlinkRuntimeException("Error to discover tables: " + e.getMessage(), e);
         }

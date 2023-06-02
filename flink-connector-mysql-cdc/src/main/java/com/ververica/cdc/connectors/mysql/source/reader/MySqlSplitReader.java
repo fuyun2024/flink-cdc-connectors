@@ -16,12 +16,14 @@
 
 package com.ververica.cdc.connectors.mysql.source.reader;
 
+import org.apache.flink.api.connector.source.SourceReaderContext;
 import org.apache.flink.connector.base.source.reader.RecordsWithSplitIds;
 import org.apache.flink.connector.base.source.reader.splitreader.SplitReader;
 import org.apache.flink.connector.base.source.reader.splitreader.SplitsAddition;
 import org.apache.flink.connector.base.source.reader.splitreader.SplitsChange;
 
 import com.github.shyiko.mysql.binlog.BinaryLogClient;
+import com.ververica.cdc.connectors.base.source.reader.external.rate.RateLimitSplitReader;
 import com.ververica.cdc.connectors.mysql.debezium.reader.BinlogSplitReader;
 import com.ververica.cdc.connectors.mysql.debezium.reader.DebeziumReader;
 import com.ververica.cdc.connectors.mysql.debezium.reader.SnapshotSplitReader;
@@ -50,7 +52,8 @@ import static com.ververica.cdc.connectors.mysql.debezium.DebeziumUtils.createMy
 import static com.ververica.cdc.connectors.mysql.source.assigners.MySqlBinlogSplitAssigner.BINLOG_SPLIT_ID;
 
 /** The {@link SplitReader} implementation for the {@link MySqlSource}. */
-public class MySqlSplitReader implements SplitReader<SourceRecords, MySqlSplit> {
+public class MySqlSplitReader extends RateLimitSplitReader
+        implements SplitReader<SourceRecords, MySqlSplit> {
 
     private static final Logger LOG = LoggerFactory.getLogger(MySqlSplitReader.class);
     private final ArrayDeque<MySqlSnapshotSplit> snapshotSplits;
@@ -65,7 +68,11 @@ public class MySqlSplitReader implements SplitReader<SourceRecords, MySqlSplit> 
     @Nullable private BinlogSplitReader reusedBinlogReader;
 
     public MySqlSplitReader(
-            MySqlSourceConfig sourceConfig, int subtaskId, MySqlSourceReaderContext context) {
+            MySqlSourceConfig sourceConfig,
+            int subtaskId,
+            MySqlSourceReaderContext context,
+            SourceReaderContext readerContext) {
+        super(sourceConfig, readerContext);
         this.sourceConfig = sourceConfig;
         this.subtaskId = subtaskId;
         this.snapshotSplits = new ArrayDeque<>();
@@ -106,11 +113,33 @@ public class MySqlSplitReader implements SplitReader<SourceRecords, MySqlSplit> 
                 MySqlSplit nextSplit = binlogSplits.poll();
                 currentSplitId = nextSplit.splitId();
                 currentReader = getBinlogSplitReader();
+                if (currentReader instanceof SnapshotSplitReader) {
+                    ((SnapshotSplitReader) currentReader).setRateLimiter(rateLimiter);
+                    final Object acquire = super.acquire(sourceConfig.getSplitSize());
+                    LOG.info(
+                            "subtaskId "
+                                    + subtaskId
+                                    + " acquire cost :"
+                                    + acquire
+                                    + ", for nextSplit "
+                                    + nextSplit);
+                }
                 currentReader.submitSplit(nextSplit);
             } else if (snapshotSplits.size() > 0) {
                 MySqlSplit nextSplit = snapshotSplits.poll();
                 currentSplitId = nextSplit.splitId();
                 currentReader = getSnapshotSplitReader();
+                if (currentReader instanceof SnapshotSplitReader) {
+                    ((SnapshotSplitReader) currentReader).setRateLimiter(rateLimiter);
+                    final Object acquire = super.acquire(sourceConfig.getSplitSize());
+                    LOG.info(
+                            "subtaskId "
+                                    + subtaskId
+                                    + " acquire cost :"
+                                    + acquire
+                                    + ", for nextSplit "
+                                    + nextSplit);
+                }
                 currentReader.submitSplit(nextSplit);
             } else {
                 LOG.info("No available split to read.");

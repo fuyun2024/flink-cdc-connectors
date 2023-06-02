@@ -31,6 +31,7 @@ import org.apache.flink.core.io.SimpleVersionedSerializer;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.util.FlinkRuntimeException;
 
+import com.ververica.cdc.connectors.base.config.BaseBoundednessSoureConfig;
 import com.ververica.cdc.connectors.base.config.SourceConfig;
 import com.ververica.cdc.connectors.base.dialect.DataSourceDialect;
 import com.ververica.cdc.connectors.base.options.StartupMode;
@@ -43,19 +44,20 @@ import com.ververica.cdc.connectors.base.source.assigner.state.PendingSplitsStat
 import com.ververica.cdc.connectors.base.source.assigner.state.StreamPendingSplitsState;
 import com.ververica.cdc.connectors.base.source.enumerator.IncrementalSourceEnumerator;
 import com.ververica.cdc.connectors.base.source.meta.offset.OffsetFactory;
-import com.ververica.cdc.connectors.base.source.meta.split.SourceRecords;
-import com.ververica.cdc.connectors.base.source.meta.split.SourceSplitBase;
-import com.ververica.cdc.connectors.base.source.meta.split.SourceSplitSerializer;
-import com.ververica.cdc.connectors.base.source.meta.split.SourceSplitState;
+import com.ververica.cdc.connectors.base.source.meta.split.*;
 import com.ververica.cdc.connectors.base.source.metrics.SourceReaderMetrics;
 import com.ververica.cdc.connectors.base.source.reader.IncrementalSourceReader;
 import com.ververica.cdc.connectors.base.source.reader.IncrementalSourceRecordEmitter;
 import com.ververica.cdc.connectors.base.source.reader.IncrementalSourceSplitReader;
 import com.ververica.cdc.debezium.DebeziumDeserializationSchema;
 import io.debezium.relational.TableId;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Method;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
 
 /**
@@ -64,8 +66,10 @@ import java.util.function.Supplier;
  * capture data change by streaming reading.
  */
 @Experimental
-public class IncrementalSource<T, C extends SourceConfig>
+public class IncrementalSource<T, C extends BaseBoundednessSoureConfig>
         implements Source<T, SourceSplitBase, PendingSplitsState>, ResultTypeQueryable<T> {
+
+    private static final Logger LOG = LoggerFactory.getLogger(IncrementalSource.class);
 
     private static final long serialVersionUID = 1L;
 
@@ -116,7 +120,10 @@ public class IncrementalSource<T, C extends SourceConfig>
         Supplier<IncrementalSourceSplitReader<C>> splitReaderSupplier =
                 () ->
                         new IncrementalSourceSplitReader<>(
-                                readerContext.getIndexOfSubtask(), dataSourceDialect, sourceConfig);
+                                readerContext.getIndexOfSubtask(),
+                                dataSourceDialect,
+                                sourceConfig,
+                                readerContext);
         return new IncrementalSourceReader<>(
                 elementsQueue,
                 splitReaderSupplier,
@@ -155,7 +162,8 @@ public class IncrementalSource<T, C extends SourceConfig>
             splitAssigner = new StreamSplitAssigner(sourceConfig, dataSourceDialect, offsetFactory);
         }
 
-        return new IncrementalSourceEnumerator(enumContext, sourceConfig, splitAssigner);
+        return new IncrementalSourceEnumerator(
+                enumContext, sourceConfig, splitAssigner, new HashMap<>());
     }
 
     @Override
@@ -164,6 +172,9 @@ public class IncrementalSource<T, C extends SourceConfig>
         C sourceConfig = configFactory.create(0);
 
         final SplitAssigner splitAssigner;
+        Map<String, Map<String, String>> extMap = new HashMap<>();
+
+        LOG.info("restoreEnumerator checkpoint: " + checkpoint);
         if (checkpoint instanceof HybridPendingSplitsState) {
             splitAssigner =
                     new HybridSplitAssigner<>(
@@ -172,6 +183,12 @@ public class IncrementalSource<T, C extends SourceConfig>
                             (HybridPendingSplitsState) checkpoint,
                             dataSourceDialect,
                             offsetFactory);
+            if (((HybridPendingSplitsState) checkpoint).isBatchEnd()) {
+                final StreamSplit streamSplit =
+                        ((HybridSplitAssigner) splitAssigner).createStreamSplit();
+                extMap.put("start", streamSplit.getStartingOffset().getOffset());
+                extMap.put("end", streamSplit.getEndingOffset().getOffset());
+            }
         } else if (checkpoint instanceof StreamPendingSplitsState) {
             splitAssigner =
                     new StreamSplitAssigner(
@@ -183,7 +200,7 @@ public class IncrementalSource<T, C extends SourceConfig>
             throw new UnsupportedOperationException(
                     "Unsupported restored PendingSplitsState: " + checkpoint);
         }
-        return new IncrementalSourceEnumerator(enumContext, sourceConfig, splitAssigner);
+        return new IncrementalSourceEnumerator(enumContext, sourceConfig, splitAssigner, extMap);
     }
 
     @Override

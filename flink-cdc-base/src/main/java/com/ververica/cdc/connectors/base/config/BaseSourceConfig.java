@@ -23,7 +23,7 @@ import io.debezium.config.Configuration;
 import java.util.Properties;
 
 /** A basic Source configuration which is used by {@link IncrementalSource}. */
-public abstract class BaseSourceConfig implements SourceConfig {
+public abstract class BaseSourceConfig extends BaseBoundednessSoureConfig {
 
     private static final long serialVersionUID = 1L;
 
@@ -48,7 +48,9 @@ public abstract class BaseSourceConfig implements SourceConfig {
             double distributionFactorLower,
             boolean includeSchemaChanges,
             Properties dbzProperties,
-            Configuration dbzConfiguration) {
+            Configuration dbzConfiguration,
+            Properties otherProperties) {
+        super(otherProperties);
         this.startupOptions = startupOptions;
         this.splitSize = splitSize;
         this.splitMetaGroupSize = splitMetaGroupSize;

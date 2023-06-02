@@ -71,6 +71,7 @@ public class MySqlSourceConfigFactory implements Serializable {
     private Properties jdbcProperties;
     private Duration heartbeatInterval = HEARTBEAT_INTERVAL.defaultValue();
     private Properties dbzProperties;
+    private Properties otherProperties;
     private String chunkKeyColumn;
 
     public MySqlSourceConfigFactory hostname(String hostname) {
@@ -248,6 +249,11 @@ public class MySqlSourceConfigFactory implements Serializable {
         return this;
     }
 
+    public MySqlSourceConfigFactory setOtherProperties(Properties properties) {
+        this.otherProperties = properties;
+        return this;
+    }
+
     /** Creates a new {@link MySqlSourceConfig} for the given subtask {@code subtaskId}. */
     public MySqlSourceConfig createConfig(int subtaskId) {
         Properties props = new Properties();
@@ -332,6 +338,7 @@ public class MySqlSourceConfigFactory implements Serializable {
                 scanNewlyAddedTableEnabled,
                 props,
                 jdbcProperties,
+                otherProperties,
                 chunkKeyColumn);
     }
 }

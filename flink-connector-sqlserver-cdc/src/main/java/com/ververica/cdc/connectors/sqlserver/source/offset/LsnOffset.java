@@ -52,7 +52,7 @@ public class LsnOffset extends Offset {
     }
 
     public Lsn getLcn() {
-        return Lsn.valueOf(offset.get(SourceInfo.CHANGE_LSN_KEY));
+        return Lsn.valueOf(offset.get(SourceInfo.COMMIT_LSN_KEY));
     }
 
     @Override
@@ -66,6 +66,17 @@ public class LsnOffset extends Offset {
             return 1;
         }
         if (NO_STOPPING_OFFSET.equals(that)) {
+            return -1;
+        }
+
+        if (INITIAL_OFFSET.equals(that) && INITIAL_OFFSET.equals(this)) {
+            return 0;
+        }
+
+        if (INITIAL_OFFSET.equals(this)) {
+            return -1;
+        }
+        if (INITIAL_OFFSET.equals(that)) {
             return -1;
         }
 
@@ -92,5 +103,10 @@ public class LsnOffset extends Offset {
         }
         LsnOffset that = (LsnOffset) o;
         return offset.equals(that.offset);
+    }
+
+    @Override
+    public boolean isBoundedRead() {
+        return !NO_STOPPING_OFFSET.equals(this);
     }
 }

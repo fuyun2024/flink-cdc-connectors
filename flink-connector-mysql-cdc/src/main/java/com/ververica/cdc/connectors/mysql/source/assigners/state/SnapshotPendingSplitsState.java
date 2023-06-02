@@ -16,6 +16,7 @@
 
 package com.ververica.cdc.connectors.mysql.source.assigners.state;
 
+import com.ververica.cdc.connectors.base.source.assigner.state.PendingSplitsState;
 import com.ververica.cdc.connectors.mysql.source.assigners.AssignerStatus;
 import com.ververica.cdc.connectors.mysql.source.assigners.ChunkSplitter;
 import com.ververica.cdc.connectors.mysql.source.enumerator.MySqlSourceEnumerator;

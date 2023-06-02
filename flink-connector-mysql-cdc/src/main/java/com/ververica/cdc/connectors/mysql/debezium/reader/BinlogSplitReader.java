@@ -136,11 +136,15 @@ public class BinlogSplitReader implements DebeziumReader<SourceRecords, MySqlSpl
                 });
     }
 
-    private class BinlogSplitChangeEventSourceContextImpl
+    public class BinlogSplitChangeEventSourceContextImpl
             implements ChangeEventSource.ChangeEventSourceContext {
         @Override
         public boolean isRunning() {
             return currentTaskRunning;
+        }
+
+        public void finished() {
+            currentTaskRunning = false;
         }
     }
 

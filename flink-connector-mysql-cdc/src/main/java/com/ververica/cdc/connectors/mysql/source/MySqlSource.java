@@ -32,6 +32,7 @@ import org.apache.flink.core.io.SimpleVersionedSerializer;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.util.FlinkRuntimeException;
 
+import com.ververica.cdc.connectors.base.source.assigner.state.PendingSplitsState;
 import com.ververica.cdc.connectors.mysql.MySqlValidator;
 import com.ververica.cdc.connectors.mysql.debezium.DebeziumUtils;
 import com.ververica.cdc.connectors.mysql.source.assigners.MySqlBinlogSplitAssigner;
@@ -39,7 +40,6 @@ import com.ververica.cdc.connectors.mysql.source.assigners.MySqlHybridSplitAssig
 import com.ververica.cdc.connectors.mysql.source.assigners.MySqlSplitAssigner;
 import com.ververica.cdc.connectors.mysql.source.assigners.state.BinlogPendingSplitsState;
 import com.ververica.cdc.connectors.mysql.source.assigners.state.HybridPendingSplitsState;
-import com.ververica.cdc.connectors.mysql.source.assigners.state.PendingSplitsState;
 import com.ververica.cdc.connectors.mysql.source.assigners.state.PendingSplitsStateSerializer;
 import com.ververica.cdc.connectors.mysql.source.config.MySqlSourceConfig;
 import com.ververica.cdc.connectors.mysql.source.config.MySqlSourceConfigFactory;
@@ -49,6 +49,7 @@ import com.ververica.cdc.connectors.mysql.source.reader.MySqlRecordEmitter;
 import com.ververica.cdc.connectors.mysql.source.reader.MySqlSourceReader;
 import com.ververica.cdc.connectors.mysql.source.reader.MySqlSourceReaderContext;
 import com.ververica.cdc.connectors.mysql.source.reader.MySqlSplitReader;
+import com.ververica.cdc.connectors.mysql.source.split.MySqlBinlogSplit;
 import com.ververica.cdc.connectors.mysql.source.split.MySqlSplit;
 import com.ververica.cdc.connectors.mysql.source.split.MySqlSplitSerializer;
 import com.ververica.cdc.connectors.mysql.source.split.SourceRecords;
@@ -58,6 +59,8 @@ import io.debezium.jdbc.JdbcConnection;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.function.Supplier;
 
 import static com.ververica.cdc.connectors.mysql.debezium.DebeziumUtils.openJdbcConnection;
@@ -148,7 +151,8 @@ public class MySqlSource<T>
                         new MySqlSplitReader(
                                 sourceConfig,
                                 readerContext.getIndexOfSubtask(),
-                                mySqlSourceReaderContext);
+                                mySqlSourceReaderContext,
+                                readerContext);
         return new MySqlSourceReader<>(
                 elementsQueue,
                 splitReaderSupplier,
@@ -187,7 +191,7 @@ public class MySqlSource<T>
             splitAssigner = new MySqlBinlogSplitAssigner(sourceConfig);
         }
 
-        return new MySqlSourceEnumerator(enumContext, sourceConfig, splitAssigner);
+        return new MySqlSourceEnumerator(enumContext, sourceConfig, splitAssigner, new HashMap<>());
     }
 
     @Override
@@ -196,12 +200,20 @@ public class MySqlSource<T>
         MySqlSourceConfig sourceConfig = configFactory.createConfig(0);
 
         final MySqlSplitAssigner splitAssigner;
+        Map<String, Map<String, String>> extMap = new HashMap<>();
+
         if (checkpoint instanceof HybridPendingSplitsState) {
             splitAssigner =
                     new MySqlHybridSplitAssigner(
                             sourceConfig,
                             enumContext.currentParallelism(),
                             (HybridPendingSplitsState) checkpoint);
+            if (((HybridPendingSplitsState) checkpoint).isBatchEnd()) {
+                final MySqlBinlogSplit streamSplit =
+                        ((MySqlHybridSplitAssigner) splitAssigner).createBinlogSplit();
+                extMap.put("start", streamSplit.getStartingOffset().getOffset());
+                extMap.put("end", streamSplit.getEndingOffset().getOffset());
+            }
         } else if (checkpoint instanceof BinlogPendingSplitsState) {
             splitAssigner =
                     new MySqlBinlogSplitAssigner(
@@ -210,7 +222,7 @@ public class MySqlSource<T>
             throw new UnsupportedOperationException(
                     "Unsupported restored PendingSplitsState: " + checkpoint);
         }
-        return new MySqlSourceEnumerator(enumContext, sourceConfig, splitAssigner);
+        return new MySqlSourceEnumerator(enumContext, sourceConfig, splitAssigner, extMap);
     }
 
     @Override

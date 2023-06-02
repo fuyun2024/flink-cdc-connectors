@@ -21,6 +21,7 @@ import org.apache.flink.util.FlinkRuntimeException;
 
 import org.apache.flink.shaded.guava30.com.google.common.util.concurrent.ThreadFactoryBuilder;
 
+import com.ververica.cdc.connectors.base.source.reader.external.rate.JdbcRateLimiter;
 import com.ververica.cdc.connectors.mysql.debezium.dispatcher.SignalEventDispatcher;
 import com.ververica.cdc.connectors.mysql.debezium.task.MySqlBinlogSplitReadTask;
 import com.ververica.cdc.connectors.mysql.debezium.task.MySqlSnapshotSplitReadTask;
@@ -48,11 +49,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -89,6 +86,8 @@ public class SnapshotSplitReader implements DebeziumReader<SourceRecords, MySqlS
     public AtomicBoolean hasNextElement;
     public AtomicBoolean reachEnd;
 
+    protected Optional<JdbcRateLimiter> rateLimiter;
+
     private static final long READER_CLOSE_TIMEOUT = 30L;
 
     public SnapshotSplitReader(StatefulTaskContext statefulTaskContext, int subtaskId) {
@@ -118,7 +117,8 @@ public class SnapshotSplitReader implements DebeziumReader<SourceRecords, MySqlS
                         statefulTaskContext.getTopicSelector(),
                         statefulTaskContext.getSnapshotReceiver(),
                         StatefulTaskContext.getClock(),
-                        currentSnapshotSplit);
+                        currentSnapshotSplit,
+                        rateLimiter);
         executorService.submit(
                 () -> {
                     try {
@@ -401,6 +401,12 @@ public class SnapshotSplitReader implements DebeziumReader<SourceRecords, MySqlS
         @Override
         public boolean isRunning() {
             return currentTaskRunning;
+        }
+    }
+
+    public void setRateLimiter(Optional<JdbcRateLimiter> rateLimiter) {
+        if (this.rateLimiter == null) {
+            this.rateLimiter = rateLimiter;
         }
     }
 }

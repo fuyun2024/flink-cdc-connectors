@@ -16,6 +16,8 @@
 
 package com.ververica.cdc.connectors.sqlserver.source;
 
+import com.ververica.cdc.connectors.base.config.BaseSourceBuilder;
+import com.ververica.cdc.connectors.base.config.JdbcSourceConfigFactory;
 import com.ververica.cdc.connectors.base.options.StartupOptions;
 import com.ververica.cdc.connectors.base.source.jdbc.JdbcIncrementalSource;
 import com.ververica.cdc.connectors.sqlserver.source.config.SqlServerSourceConfigFactory;
@@ -35,15 +37,17 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * <p>Check the Java docs of each individual method to learn more about the settings to build a
  * {@link SqlServerIncrementalSource}.
  */
-public class SqlServerSourceBuilder<T> {
-
-    private final SqlServerSourceConfigFactory configFactory = new SqlServerSourceConfigFactory();
+public class SqlServerSourceBuilder<T> extends BaseSourceBuilder {
 
     private LsnFactory offsetFactory;
 
     private SqlServerDialect dialect;
 
     private DebeziumDeserializationSchema<T> deserializer;
+
+    public SqlServerSourceBuilder() {
+        super(new SqlServerSourceConfigFactory());
+    }
 
     /** Hostname of the SQL Server database server. */
     public SqlServerSourceBuilder<T> hostname(String hostname) {
@@ -203,7 +207,7 @@ public class SqlServerSourceBuilder<T> {
      */
     public SqlServerIncrementalSource<T> build() {
         this.offsetFactory = new LsnFactory();
-        this.dialect = new SqlServerDialect(configFactory);
+        this.dialect = new SqlServerDialect((SqlServerSourceConfigFactory) configFactory);
         return new SqlServerIncrementalSource<T>(
                 configFactory, checkNotNull(deserializer), offsetFactory, dialect);
     }
@@ -212,7 +216,7 @@ public class SqlServerSourceBuilder<T> {
     public static class SqlServerIncrementalSource<T> extends JdbcIncrementalSource<T> {
 
         public SqlServerIncrementalSource(
-                SqlServerSourceConfigFactory configFactory,
+                JdbcSourceConfigFactory configFactory,
                 DebeziumDeserializationSchema<T> deserializationSchema,
                 LsnFactory offsetFactory,
                 SqlServerDialect dataSourceDialect) {

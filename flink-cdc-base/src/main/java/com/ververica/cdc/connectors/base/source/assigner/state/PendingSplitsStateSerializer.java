@@ -160,6 +160,7 @@ public class PendingSplitsStateSerializer implements SimpleVersionedSerializer<P
             HybridPendingSplitsState state, DataOutputSerializer out) throws IOException {
         serializeSnapshotPendingSplitsState(state.getSnapshotPendingSplits(), out);
         out.writeBoolean(state.isStreamSplitAssigned());
+        out.writeBoolean(state.isBatchEnd());
     }
 
     private void serializeStreamPendingSplitsState(
@@ -214,7 +215,9 @@ public class PendingSplitsStateSerializer implements SimpleVersionedSerializer<P
         SnapshotPendingSplitsState snapshotPendingSplitsState =
                 deserializeLegacySnapshotPendingSplitsState(splitVersion, in);
         boolean isStreamSplitAssigned = in.readBoolean();
-        return new HybridPendingSplitsState(snapshotPendingSplitsState, isStreamSplitAssigned);
+        boolean batchEnd = in.readBoolean();
+        return new HybridPendingSplitsState(
+                snapshotPendingSplitsState, isStreamSplitAssigned, batchEnd);
     }
 
     private SnapshotPendingSplitsState deserializeSnapshotPendingSplitsState(
@@ -264,7 +267,9 @@ public class PendingSplitsStateSerializer implements SimpleVersionedSerializer<P
         SnapshotPendingSplitsState snapshotPendingSplitsState =
                 deserializeSnapshotPendingSplitsState(version, splitVersion, in);
         boolean isStreamSplitAssigned = in.readBoolean();
-        return new HybridPendingSplitsState(snapshotPendingSplitsState, isStreamSplitAssigned);
+        boolean batchEnd = in.readBoolean();
+        return new HybridPendingSplitsState(
+                snapshotPendingSplitsState, isStreamSplitAssigned, batchEnd);
     }
 
     private StreamPendingSplitsState deserializeStreamPendingSplitsState(DataInputDeserializer in)

@@ -16,6 +16,7 @@
 
 package com.ververica.cdc.connectors.mysql.source.config;
 
+import com.ververica.cdc.connectors.base.config.BoundednessConfig;
 import com.ververica.cdc.connectors.mysql.source.MySqlSource;
 import com.ververica.cdc.connectors.mysql.table.StartupOptions;
 import io.debezium.config.Configuration;
@@ -32,7 +33,7 @@ import java.util.Properties;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /** A MySql Source configuration which is used by {@link MySqlSource}. */
-public class MySqlSourceConfig implements Serializable {
+public class MySqlSourceConfig extends BoundednessConfig implements Serializable {
     private static final long serialVersionUID = 1L;
 
     private final String hostname;
@@ -86,7 +87,9 @@ public class MySqlSourceConfig implements Serializable {
             boolean scanNewlyAddedTableEnabled,
             Properties dbzProperties,
             Properties jdbcProperties,
+            Properties otherProperties,
             @Nullable String chunkKeyColumn) {
+        super(otherProperties);
         this.hostname = checkNotNull(hostname);
         this.port = port;
         this.username = checkNotNull(username);

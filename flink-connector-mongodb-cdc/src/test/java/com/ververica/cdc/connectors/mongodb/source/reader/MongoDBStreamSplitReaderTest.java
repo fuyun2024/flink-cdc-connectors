@@ -118,8 +118,7 @@ public class MongoDBStreamSplitReaderTest extends MongoDBSourceTestBase {
     @Test
     public void testStreamSplitReader() throws Exception {
         IncrementalSourceSplitReader<MongoDBSourceConfig> streamSplitReader =
-                new IncrementalSourceSplitReader<>(0, dialect, sourceConfig);
-
+                new IncrementalSourceSplitReader<>(0, dialect, sourceConfig, null);
         try {
             ChangeStreamOffset startOffset = new ChangeStreamOffset(startupResumeToken);
 

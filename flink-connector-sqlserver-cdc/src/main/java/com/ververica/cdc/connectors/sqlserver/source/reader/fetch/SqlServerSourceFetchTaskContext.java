@@ -24,6 +24,7 @@ import com.ververica.cdc.connectors.base.source.EmbeddedFlinkDatabaseHistory;
 import com.ververica.cdc.connectors.base.source.meta.offset.Offset;
 import com.ververica.cdc.connectors.base.source.meta.split.SourceSplitBase;
 import com.ververica.cdc.connectors.base.source.reader.external.JdbcSourceFetchTaskContext;
+import com.ververica.cdc.connectors.base.utils.SourceRecordUtils;
 import com.ververica.cdc.connectors.sqlserver.source.config.SqlServerSourceConfig;
 import com.ververica.cdc.connectors.sqlserver.source.dialect.SqlServerDialect;
 import com.ververica.cdc.connectors.sqlserver.source.offset.LsnOffset;
@@ -161,6 +162,7 @@ public class SqlServerSourceFetchTaskContext extends JdbcSourceFetchTaskContext 
                         : sourceSplitBase.asStreamSplit().getStartingOffset();
 
         SqlServerOffsetContext sqlServerOffsetContext = loader.load(offset.getOffset());
+        sqlServerOffsetContext.preSnapshotCompletion();
         return sqlServerOffsetContext;
     }
 
@@ -280,5 +282,10 @@ public class SqlServerSourceFetchTaskContext extends JdbcSourceFetchTaskContext 
             }
             return sourceInfo.getString(SourceInfo.COMMIT_LSN_KEY);
         }
+    }
+
+    @Override
+    public TableId getTableId(SourceRecord record) {
+        return SourceRecordUtils.getTableId(record);
     }
 }

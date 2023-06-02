@@ -30,11 +30,7 @@ import org.apache.flink.util.Preconditions;
 
 import com.ververica.cdc.connectors.base.config.SourceConfig;
 import com.ververica.cdc.connectors.base.dialect.DataSourceDialect;
-import com.ververica.cdc.connectors.base.source.meta.events.FinishedSnapshotSplitsAckEvent;
-import com.ververica.cdc.connectors.base.source.meta.events.FinishedSnapshotSplitsReportEvent;
-import com.ververica.cdc.connectors.base.source.meta.events.FinishedSnapshotSplitsRequestEvent;
-import com.ververica.cdc.connectors.base.source.meta.events.StreamSplitMetaEvent;
-import com.ververica.cdc.connectors.base.source.meta.events.StreamSplitMetaRequestEvent;
+import com.ververica.cdc.connectors.base.source.meta.events.*;
 import com.ververica.cdc.connectors.base.source.meta.offset.Offset;
 import com.ververica.cdc.connectors.base.source.meta.split.FinishedSnapshotSplitInfo;
 import com.ververica.cdc.connectors.base.source.meta.split.SnapshotSplit;
@@ -136,12 +132,32 @@ public class IncrementalSourceReader<T, C extends SourceConfig>
     protected void onSplitFinished(Map<String, SourceSplitState> finishedSplitIds) {
         for (SourceSplitState splitState : finishedSplitIds.values()) {
             SourceSplitBase sourceSplit = splitState.toSourceSplit();
-            checkState(
-                    sourceSplit.isSnapshotSplit(),
+            LOG.info(
                     String.format(
-                            "Only snapshot split could finish, but the actual split is stream split %s",
-                            sourceSplit));
-            finishedUnackedSplits.put(sourceSplit.splitId(), sourceSplit.asSnapshotSplit());
+                            "%d onSplitFinished finished sourceSplit %s",
+                            context.getIndexOfSubtask(), sourceSplit));
+            if (sourceSplit.isSnapshotSplit()) {
+                finishedUnackedSplits.put(sourceSplit.splitId(), sourceSplit.asSnapshotSplit());
+            }
+            if (sourceSplit.isStreamSplit()) {
+                final StreamSplit streamSplit = sourceSplit.asStreamSplit();
+                final Offset endingOffset = streamSplit.getEndingOffset();
+                checkState(
+                        endingOffset.isBoundedRead(),
+                        String.format(
+                                "Only endingOffset is bounded read stream split could finish, but the actual split is stream and isBoundedRead %s",
+                                endingOffset.isBoundedRead()));
+                // mySqlSourceReaderContext.setStopBinlogSplitReader();
+                LOG.info(
+                        String.format(
+                                "finished stream split %s, startingOffset %s, endOffset %s",
+                                sourceSplit,
+                                streamSplit.getStartingOffset(),
+                                streamSplit.getEndingOffset()));
+                context.sendSourceEventToCoordinator(
+                        new FinishedStreamSplitEvent(
+                                streamSplit.getStartingOffset(), streamSplit.getEndingOffset()));
+            }
         }
         reportFinishedSnapshotSplitsIfNeed();
         context.sendSplitRequest();
@@ -149,6 +165,7 @@ public class IncrementalSourceReader<T, C extends SourceConfig>
 
     @Override
     public void addSplits(List<SourceSplitBase> splits) {
+        LOG.info("Adding split to reader %d to reader: {}", context.getIndexOfSubtask(), splits);
         // restore for finishedUnackedSplits
         List<SourceSplitBase> unfinishedSplits = new ArrayList<>();
         for (SourceSplitBase split : splits) {

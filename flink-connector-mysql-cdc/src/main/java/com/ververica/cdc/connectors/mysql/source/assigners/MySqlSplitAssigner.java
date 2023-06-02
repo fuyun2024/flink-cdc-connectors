@@ -18,7 +18,7 @@ package com.ververica.cdc.connectors.mysql.source.assigners;
 
 import org.apache.flink.api.common.state.CheckpointListener;
 
-import com.ververica.cdc.connectors.mysql.source.assigners.state.PendingSplitsState;
+import com.ververica.cdc.connectors.base.source.assigner.state.PendingSplitsState;
 import com.ververica.cdc.connectors.mysql.source.offset.BinlogOffset;
 import com.ververica.cdc.connectors.mysql.source.split.FinishedSnapshotSplitInfo;
 import com.ververica.cdc.connectors.mysql.source.split.MySqlSplit;

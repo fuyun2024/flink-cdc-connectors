@@ -104,7 +104,7 @@ public class MySqlHybridSplitAssignerTest extends MySqlSourceTestBase {
                         true,
                         ChunkSplitterState.NO_SPLITTING_TABLE_STATE);
         HybridPendingSplitsState checkpoint =
-                new HybridPendingSplitsState(snapshotPendingSplitsState, false);
+                new HybridPendingSplitsState(snapshotPendingSplitsState, false, false);
         final MySqlHybridSplitAssigner assigner =
                 new MySqlHybridSplitAssigner(configuration, DEFAULT_PARALLELISM, checkpoint);
 

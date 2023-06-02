@@ -22,15 +22,23 @@ import java.util.Objects;
 public class HybridPendingSplitsState extends PendingSplitsState {
     private final SnapshotPendingSplitsState snapshotPendingSplits;
     private final boolean isStreamSplitAssigned;
+    private final boolean batchEnd;
 
     public HybridPendingSplitsState(
-            SnapshotPendingSplitsState snapshotPendingSplits, boolean isStreamSplitAssigned) {
+            SnapshotPendingSplitsState snapshotPendingSplits,
+            boolean isStreamSplitAssigned,
+            boolean batchEnd) {
         this.snapshotPendingSplits = snapshotPendingSplits;
         this.isStreamSplitAssigned = isStreamSplitAssigned;
+        this.batchEnd = batchEnd;
     }
 
     public SnapshotPendingSplitsState getSnapshotPendingSplits() {
         return snapshotPendingSplits;
+    }
+
+    public boolean isBatchEnd() {
+        return batchEnd;
     }
 
     public boolean isStreamSplitAssigned() {
@@ -47,12 +55,13 @@ public class HybridPendingSplitsState extends PendingSplitsState {
         }
         HybridPendingSplitsState that = (HybridPendingSplitsState) o;
         return isStreamSplitAssigned == that.isStreamSplitAssigned
-                && Objects.equals(snapshotPendingSplits, that.snapshotPendingSplits);
+                && Objects.equals(snapshotPendingSplits, that.snapshotPendingSplits)
+                && Objects.equals(batchEnd, that.batchEnd);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(snapshotPendingSplits, isStreamSplitAssigned);
+        return Objects.hash(snapshotPendingSplits, isStreamSplitAssigned, batchEnd);
     }
 
     @Override
@@ -62,6 +71,8 @@ public class HybridPendingSplitsState extends PendingSplitsState {
                 + snapshotPendingSplits
                 + ", isStreamSplitAssigned="
                 + isStreamSplitAssigned
+                + ", batchEnd="
+                + batchEnd
                 + '}';
     }
 }

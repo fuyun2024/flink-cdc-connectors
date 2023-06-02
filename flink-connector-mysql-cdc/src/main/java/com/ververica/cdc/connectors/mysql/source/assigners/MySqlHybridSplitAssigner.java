@@ -16,8 +16,8 @@
 
 package com.ververica.cdc.connectors.mysql.source.assigners;
 
+import com.ververica.cdc.connectors.base.source.assigner.state.PendingSplitsState;
 import com.ververica.cdc.connectors.mysql.source.assigners.state.HybridPendingSplitsState;
-import com.ververica.cdc.connectors.mysql.source.assigners.state.PendingSplitsState;
 import com.ververica.cdc.connectors.mysql.source.config.MySqlSourceConfig;
 import com.ververica.cdc.connectors.mysql.source.offset.BinlogOffset;
 import com.ververica.cdc.connectors.mysql.source.split.FinishedSnapshotSplitInfo;
@@ -28,18 +28,10 @@ import io.debezium.relational.TableId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
 
-import static com.ververica.cdc.connectors.mysql.source.assigners.AssignerStatus.isInitialAssigningFinished;
-import static com.ververica.cdc.connectors.mysql.source.assigners.AssignerStatus.isNewlyAddedAssigningFinished;
-import static com.ververica.cdc.connectors.mysql.source.assigners.AssignerStatus.isNewlyAddedAssigningSnapshotFinished;
+import static com.ververica.cdc.connectors.mysql.source.assigners.AssignerStatus.*;
 
 /**
  * A {@link MySqlSplitAssigner} that splits tables into small chunk splits based on primary key
@@ -53,8 +45,11 @@ public class MySqlHybridSplitAssigner implements MySqlSplitAssigner {
     private final int splitMetaGroupSize;
 
     private boolean isBinlogSplitAssigned;
+    private boolean batchEnd = false;
 
     private final MySqlSnapshotSplitAssigner snapshotSplitAssigner;
+
+    private final MySqlSourceConfig sourceConfig;
 
     public MySqlHybridSplitAssigner(
             MySqlSourceConfig sourceConfig,
@@ -65,7 +60,8 @@ public class MySqlHybridSplitAssigner implements MySqlSplitAssigner {
                 new MySqlSnapshotSplitAssigner(
                         sourceConfig, currentParallelism, remainingTables, isTableIdCaseSensitive),
                 false,
-                sourceConfig.getSplitMetaGroupSize());
+                sourceConfig.getSplitMetaGroupSize(),
+                sourceConfig);
     }
 
     public MySqlHybridSplitAssigner(
@@ -76,16 +72,19 @@ public class MySqlHybridSplitAssigner implements MySqlSplitAssigner {
                 new MySqlSnapshotSplitAssigner(
                         sourceConfig, currentParallelism, checkpoint.getSnapshotPendingSplits()),
                 checkpoint.isBinlogSplitAssigned(),
-                sourceConfig.getSplitMetaGroupSize());
+                sourceConfig.getSplitMetaGroupSize(),
+                sourceConfig);
     }
 
     private MySqlHybridSplitAssigner(
             MySqlSnapshotSplitAssigner snapshotSplitAssigner,
             boolean isBinlogSplitAssigned,
-            int splitMetaGroupSize) {
+            int splitMetaGroupSize,
+            MySqlSourceConfig sourceConfig) {
         this.snapshotSplitAssigner = snapshotSplitAssigner;
         this.isBinlogSplitAssigned = isBinlogSplitAssigned;
         this.splitMetaGroupSize = splitMetaGroupSize;
+        this.sourceConfig = sourceConfig;
     }
 
     @Override
@@ -156,7 +155,7 @@ public class MySqlHybridSplitAssigner implements MySqlSplitAssigner {
     @Override
     public PendingSplitsState snapshotState(long checkpointId) {
         return new HybridPendingSplitsState(
-                snapshotSplitAssigner.snapshotState(checkpointId), isBinlogSplitAssigned);
+                snapshotSplitAssigner.snapshotState(checkpointId), isBinlogSplitAssigned, batchEnd);
     }
 
     @Override
@@ -186,7 +185,7 @@ public class MySqlHybridSplitAssigner implements MySqlSplitAssigner {
 
     // --------------------------------------------------------------------------------------------
 
-    private MySqlBinlogSplit createBinlogSplit() {
+    public MySqlBinlogSplit createBinlogSplit() {
         final List<MySqlSchemalessSnapshotSplit> assignedSnapshotSplit =
                 snapshotSplitAssigner.getAssignedSplits().values().stream()
                         .sorted(Comparator.comparing(MySqlSplit::splitId))
@@ -197,11 +196,15 @@ public class MySqlHybridSplitAssigner implements MySqlSplitAssigner {
         final List<FinishedSnapshotSplitInfo> finishedSnapshotSplitInfos = new ArrayList<>();
 
         BinlogOffset minBinlogOffset = null;
+        BinlogOffset maxBinlogOffset = null;
         for (MySqlSchemalessSnapshotSplit split : assignedSnapshotSplit) {
             // find the min binlog offset
             BinlogOffset binlogOffset = splitFinishedOffsets.get(split.splitId());
             if (minBinlogOffset == null || binlogOffset.isBefore(minBinlogOffset)) {
                 minBinlogOffset = binlogOffset;
+            }
+            if (maxBinlogOffset == null || binlogOffset.isAfter(maxBinlogOffset)) {
+                maxBinlogOffset = binlogOffset;
             }
             finishedSnapshotSplitInfos.add(
                     new FinishedSnapshotSplitInfo(
@@ -216,12 +219,20 @@ public class MySqlHybridSplitAssigner implements MySqlSplitAssigner {
         // then transfer them
 
         boolean divideMetaToGroups = finishedSnapshotSplitInfos.size() > splitMetaGroupSize;
+        BinlogOffset endingOffset = BinlogOffset.ofNonStopping();
+        if (sourceConfig.isBounded()) {
+            endingOffset = maxBinlogOffset != null ? maxBinlogOffset : BinlogOffset.ofLatest();
+        }
         return new MySqlBinlogSplit(
                 BINLOG_SPLIT_ID,
                 minBinlogOffset == null ? BinlogOffset.ofEarliest() : minBinlogOffset,
-                BinlogOffset.ofNonStopping(),
+                endingOffset,
                 divideMetaToGroups ? new ArrayList<>() : finishedSnapshotSplitInfos,
                 new HashMap<>(),
                 finishedSnapshotSplitInfos.size());
+    }
+
+    public void batchEnd() {
+        batchEnd = true;
     }
 }

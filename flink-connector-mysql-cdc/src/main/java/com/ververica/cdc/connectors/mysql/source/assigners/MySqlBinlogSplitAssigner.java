@@ -18,21 +18,15 @@ package com.ververica.cdc.connectors.mysql.source.assigners;
 
 import org.apache.flink.util.CollectionUtil;
 
+import com.ververica.cdc.connectors.base.source.assigner.state.PendingSplitsState;
 import com.ververica.cdc.connectors.mysql.source.assigners.state.BinlogPendingSplitsState;
-import com.ververica.cdc.connectors.mysql.source.assigners.state.PendingSplitsState;
 import com.ververica.cdc.connectors.mysql.source.config.MySqlSourceConfig;
 import com.ververica.cdc.connectors.mysql.source.offset.BinlogOffset;
 import com.ververica.cdc.connectors.mysql.source.split.FinishedSnapshotSplitInfo;
 import com.ververica.cdc.connectors.mysql.source.split.MySqlBinlogSplit;
 import com.ververica.cdc.connectors.mysql.source.split.MySqlSplit;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 /** A {@link MySqlSplitAssigner} which only read binlog from current binlog position. */
 public class MySqlBinlogSplitAssigner implements MySqlSplitAssigner {
