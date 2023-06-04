@@ -16,6 +16,7 @@
 
 package com.ververica.cdc.connectors.oracle.source.reader.fetch;
 
+import io.debezium.pipeline.EventDispatcher;
 import org.apache.flink.table.types.logical.RowType;
 
 import com.ververica.cdc.connectors.base.config.JdbcSourceConfig;
@@ -77,6 +78,7 @@ public class OracleSourceFetchTaskContext extends JdbcSourceFetchTaskContext {
     private JdbcSourceEventDispatcher dispatcher;
     private ChangeEventQueue<DataChangeEvent> queue;
     private OracleErrorHandler errorHandler;
+    private EventDispatcher.SnapshotReceiver snapshotReceiver;
 
     public OracleSourceFetchTaskContext(
             JdbcSourceConfig sourceConfig,
@@ -132,6 +134,8 @@ public class OracleSourceFetchTaskContext extends JdbcSourceFetchTaskContext {
                         DataChangeEvent::new,
                         metadataProvider,
                         schemaNameAdjuster);
+
+        this.snapshotReceiver = dispatcher.getSnapshotChangeEventReceiver();
 
         final OracleChangeEventSourceMetricsFactory changeEventSourceMetricsFactory =
                 new OracleChangeEventSourceMetricsFactory(
@@ -192,6 +196,10 @@ public class OracleSourceFetchTaskContext extends JdbcSourceFetchTaskContext {
     @Override
     public JdbcSourceEventDispatcher getDispatcher() {
         return dispatcher;
+    }
+
+    public EventDispatcher.SnapshotReceiver getSnapshotReceiver() {
+        return snapshotReceiver;
     }
 
     @Override
