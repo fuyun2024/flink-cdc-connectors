@@ -43,6 +43,7 @@ import io.debezium.connector.sqlserver.SqlServerTopicSelector;
 import io.debezium.data.Envelope.FieldName;
 import io.debezium.pipeline.DataChangeEvent;
 import io.debezium.pipeline.ErrorHandler;
+import io.debezium.pipeline.EventDispatcher;
 import io.debezium.pipeline.metrics.DefaultChangeEventSourceMetricsFactory;
 import io.debezium.pipeline.metrics.SnapshotChangeEventSourceMetrics;
 import io.debezium.pipeline.metrics.StreamingChangeEventSourceMetrics;
@@ -84,6 +85,7 @@ public class SqlServerSourceFetchTaskContext extends JdbcSourceFetchTaskContext 
     private ChangeEventQueue<DataChangeEvent> queue;
     private SqlServerTaskContext taskContext;
     private TopicSelector<TableId> topicSelector;
+    private EventDispatcher.SnapshotReceiver snapshotReceiver;
     private SnapshotChangeEventSourceMetrics snapshotChangeEventSourceMetrics;
     private StreamingChangeEventSourceMetrics streamingChangeEventSourceMetrics;
 
@@ -143,6 +145,8 @@ public class SqlServerSourceFetchTaskContext extends JdbcSourceFetchTaskContext 
                         metadataProvider,
                         schemaNameAdjuster);
 
+        this.snapshotReceiver = dispatcher.getSnapshotChangeEventReceiver();
+
         final DefaultChangeEventSourceMetricsFactory changeEventSourceMetricsFactory =
                 new DefaultChangeEventSourceMetricsFactory();
         this.snapshotChangeEventSourceMetrics =
@@ -163,7 +167,6 @@ public class SqlServerSourceFetchTaskContext extends JdbcSourceFetchTaskContext 
                         : sourceSplitBase.asStreamSplit().getStartingOffset();
 
         SqlServerOffsetContext sqlServerOffsetContext = loader.load(offset.getOffset());
-        sqlServerOffsetContext.preSnapshotCompletion();
         return sqlServerOffsetContext;
     }
 
@@ -216,6 +219,10 @@ public class SqlServerSourceFetchTaskContext extends JdbcSourceFetchTaskContext 
     @Override
     public JdbcSourceEventDispatcher getDispatcher() {
         return dispatcher;
+    }
+
+    public EventDispatcher.SnapshotReceiver getSnapshotReceiver() {
+        return snapshotReceiver;
     }
 
     @Override
