@@ -130,7 +130,8 @@ public class OracleScanFetchTask implements FetchTask<SourceSplitBase> {
         // execute redoLog read task
         if (snapshotResult.isCompletedOrSkipped()) {
             final LogMinerOracleOffsetContextLoader loader =
-                    new LogMinerOracleOffsetContextLoader(sourceFetchContext.getDbzConnectorConfig());
+                    new LogMinerOracleOffsetContextLoader(
+                            sourceFetchContext.getDbzConnectorConfig());
             final OracleOffsetContext streamOffsetContext =
                     loader.load(backfillBinlogSplit.getStartingOffset().getOffset());
 

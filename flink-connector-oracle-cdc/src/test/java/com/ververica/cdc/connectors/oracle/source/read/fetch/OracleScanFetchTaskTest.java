@@ -16,15 +16,6 @@
 
 package com.ververica.cdc.connectors.oracle.source.read.fetch;
 
-import com.ververica.cdc.connectors.oracle.source.OracleDialect;
-import com.ververica.cdc.connectors.oracle.source.OracleSourceTestBase;
-import com.ververica.cdc.connectors.oracle.source.config.OracleSourceConfig;
-import com.ververica.cdc.connectors.oracle.source.config.OracleSourceConfigFactory;
-import com.ververica.cdc.connectors.oracle.source.reader.fetch.OracleScanFetchTask;
-import com.ververica.cdc.connectors.oracle.source.reader.fetch.OracleSourceFetchTaskContext;
-import com.ververica.cdc.connectors.oracle.utils.OracleTestUtils;
-import com.ververica.cdc.connectors.oracle.utils.RecordsFormatter;
-import io.debezium.connector.oracle.OracleConnection;
 import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.types.DataType;
 
@@ -34,6 +25,15 @@ import com.ververica.cdc.connectors.base.source.assigner.splitter.ChunkSplitter;
 import com.ververica.cdc.connectors.base.source.meta.split.SnapshotSplit;
 import com.ververica.cdc.connectors.base.source.meta.split.SourceRecords;
 import com.ververica.cdc.connectors.base.source.reader.external.IncrementalSourceScanFetcher;
+import com.ververica.cdc.connectors.oracle.source.OracleDialect;
+import com.ververica.cdc.connectors.oracle.source.OracleSourceTestBase;
+import com.ververica.cdc.connectors.oracle.source.config.OracleSourceConfig;
+import com.ververica.cdc.connectors.oracle.source.config.OracleSourceConfigFactory;
+import com.ververica.cdc.connectors.oracle.source.reader.fetch.OracleScanFetchTask;
+import com.ververica.cdc.connectors.oracle.source.reader.fetch.OracleSourceFetchTaskContext;
+import com.ververica.cdc.connectors.oracle.utils.OracleTestUtils;
+import com.ververica.cdc.connectors.oracle.utils.RecordsFormatter;
+import io.debezium.connector.oracle.OracleConnection;
 import io.debezium.data.Envelope;
 import io.debezium.jdbc.JdbcConnection;
 import io.debezium.pipeline.EventDispatcher;
@@ -64,25 +64,23 @@ public class OracleScanFetchTaskTest extends OracleSourceTestBase {
 
     @Test
     public void testChangingDataInSnapshotScan() throws Exception {
-        OracleTestUtils.createAndInitialize(
-                OracleTestUtils.ORACLE_CONTAINER, "customer.sql");
+        OracleTestUtils.createAndInitialize(OracleTestUtils.ORACLE_CONTAINER, "customer.sql");
 
-        String tableName = ORACLE_SCHEMA + ".customers";
+        String tableName = ORACLE_SCHEMA + ".CUSTOMERS";
 
         OracleSourceConfigFactory sourceConfigFactory =
-                getConfigFactory( new String[] {tableName}, 10);
+                getConfigFactory(new String[] {tableName}, 10);
         OracleSourceConfig sourceConfig = sourceConfigFactory.create(0);
         OracleDialect oracleDialect = new OracleDialect(sourceConfigFactory);
 
-        String tableId = ORACLE_DATABASE + "." + tableName;
         String[] changingDataSql =
                 new String[] {
-                    "UPDATE " + tableId + " SET address = 'Hangzhou' where id = 103",
-                    "DELETE FROM " + tableId + " where id = 102",
-                    "INSERT INTO " + tableId + " VALUES(102, 'user_2','Shanghai','123567891234')",
-                    "UPDATE " + tableId + " SET address = 'Shanghai' where id = 103",
-                    "UPDATE " + tableId + " SET address = 'Hangzhou' where id = 110",
-                    "UPDATE " + tableId + " SET address = 'Hangzhou' where id = 111",
+                    "UPDATE " + tableName + " SET address = 'Hangzhou' where id = 103",
+                    "DELETE FROM " + tableName + " where id = 102",
+                    "INSERT INTO " + tableName + " VALUES(102, 'user_2','Shanghai','123567891234')",
+                    "UPDATE " + tableName + " SET address = 'Shanghai' where id = 103",
+                    "UPDATE " + tableName + " SET address = 'Hangzhou' where id = 110",
+                    "UPDATE " + tableName + " SET address = 'Hangzhou' where id = 111",
                 };
 
         MakeChangeEventTaskContext makeChangeEventTaskContext =
@@ -95,10 +93,11 @@ public class OracleScanFetchTaskTest extends OracleSourceTestBase {
 
         final DataType dataType =
                 DataTypes.ROW(
-                        DataTypes.FIELD("id", DataTypes.BIGINT()),
-                        DataTypes.FIELD("name", DataTypes.STRING()),
-                        DataTypes.FIELD("address", DataTypes.STRING()),
-                        DataTypes.FIELD("phone_number", DataTypes.STRING()));
+                        DataTypes.FIELD("ID", DataTypes.BIGINT()),
+                        DataTypes.FIELD("NAME", DataTypes.STRING()),
+                        DataTypes.FIELD("ADDRESS", DataTypes.STRING()),
+                        DataTypes.FIELD("PHONE_NUMBER", DataTypes.STRING()));
+
         List<SnapshotSplit> snapshotSplits = getSnapshotSplits(sourceConfig, oracleDialect);
 
         String[] expected =
@@ -174,7 +173,8 @@ public class OracleScanFetchTaskTest extends OracleSourceTestBase {
         return snapshotSplitList;
     }
 
-    public static OracleSourceConfigFactory getConfigFactory(String[] captureTables, int splitSize) {
+    public static OracleSourceConfigFactory getConfigFactory(
+            String[] captureTables, int splitSize) {
         Properties debeziumProperties = new Properties();
         debeziumProperties.setProperty("log.mining.strategy", "online_catalog");
         debeziumProperties.setProperty("log.mining.continuous.mine", "true");
@@ -240,7 +240,7 @@ public class OracleScanFetchTaskTest extends OracleSourceTestBase {
                     snapshotReceiver.completeSnapshot();
                     // make change events
                     makeChangeEventFunction.get();
-                    Thread.sleep(10 * 1000);
+                    Thread.sleep(120 * 1000);
                 }
             };
         }
