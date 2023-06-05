@@ -16,7 +16,6 @@
 
 package com.ververica.cdc.connectors.oracle.source.reader.fetch;
 
-import io.debezium.pipeline.EventDispatcher;
 import org.apache.flink.table.types.logical.RowType;
 
 import com.ververica.cdc.connectors.base.config.JdbcSourceConfig;
@@ -44,6 +43,7 @@ import io.debezium.connector.oracle.logminer.LogMinerOracleOffsetContextLoader;
 import io.debezium.data.Envelope;
 import io.debezium.pipeline.DataChangeEvent;
 import io.debezium.pipeline.ErrorHandler;
+import io.debezium.pipeline.EventDispatcher;
 import io.debezium.pipeline.metrics.SnapshotChangeEventSourceMetrics;
 import io.debezium.pipeline.source.spi.EventMetadataProvider;
 import io.debezium.pipeline.spi.OffsetContext;
